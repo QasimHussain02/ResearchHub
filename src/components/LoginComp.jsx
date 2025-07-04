@@ -11,6 +11,7 @@ const LoginComp = () => {
     try {
       let response = await AuthApi(credentials.email, credentials.password);
       toast.success("Login Successful");
+      navigate("/home");
     } catch (err) {
       toast.error("Login Failed: ");
     }
@@ -18,6 +19,7 @@ const LoginComp = () => {
   const signInWithGoogle = async () => {
     let response = GoogleAuthApi();
     console.log(response);
+    navigate("/home");
   };
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#F4F4F4]">
@@ -81,10 +83,10 @@ const LoginComp = () => {
             <p className="text-xs text-gray-600 mt-4">
               New on Research Hub?{" "}
               <span
-                className="text-[#071B36] font-semibold"
-                onClick={() => useNavigate("/signup")}
+                className="text-[#071B36] font-semibold cursor-pointer"
+                onClick={() => navigate("/register")}
               >
-                <a href="">Create Account</a>
+                Create Account
               </span>
             </p>
           </div>
