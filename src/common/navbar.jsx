@@ -50,7 +50,7 @@ const Navbar = () => {
             {navigationItems.map((item, index) => (
               <button
                 key={index}
-                className={`p-2 rounded-lg transition-all duration-200 relative ${
+                className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${
                   item.active
                     ? "bg-blue-100 text-blue-600"
                     : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -62,7 +62,7 @@ const Navbar = () => {
             ))}
 
             {/* Profile Button */}
-            <button className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200">
+            <button className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <User className="h-5 w-5 text-white" />
               </div>
@@ -74,7 +74,7 @@ const Navbar = () => {
             {/* Mobile Search Toggle */}
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-all duration-200"
+              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-all duration-200 cursor-pointer"
             >
               <Search className="h-6 w-6" />
             </button>
@@ -82,7 +82,7 @@ const Navbar = () => {
             {/* Mobile Menu Toggle */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-all duration-200"
+              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-all duration-200 cursor-pointer"
             >
               {isMobileMenuOpen ? (
                 <X className="h-6 w-6" />
@@ -117,7 +117,7 @@ const Navbar = () => {
               {navigationItems.map((item, index) => (
                 <button
                   key={index}
-                  className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 relative ${
+                  className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 relative cursor-pointer ${
                     item.active
                       ? "bg-blue-100 text-blue-600"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -129,7 +129,7 @@ const Navbar = () => {
               ))}
 
               {/* Mobile Profile Button */}
-              <button className="flex items-center space-x-3 p-3 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200">
+              <button className="flex items-center space-x-3 p-3 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer">
                 <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-white" />
                 </div>
