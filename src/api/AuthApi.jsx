@@ -11,9 +11,15 @@ export const AuthApi = (email, password) => {
     return error;
   }
 };
-export const RegisterApi = (email, password) => {
+export const RegisterApi = (email, password, role, name) => {
   try {
-    let response = createUserWithEmailAndPassword(auth, email, password);
+    let response = createUserWithEmailAndPassword(
+      auth,
+      email,
+      password,
+      role,
+      name
+    );
     return response;
   } catch (error) {
     return error;
