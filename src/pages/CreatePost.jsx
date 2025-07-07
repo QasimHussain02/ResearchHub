@@ -10,6 +10,7 @@ import {
   Globe,
   Lock,
 } from "lucide-react";
+import FireStore from "../api/FireStore";
 
 const CreatePost = ({ isOpen, setIsOpen }) => {
   const [postType, setPostType] = useState("discussion");
@@ -69,6 +70,13 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
   const removeTag = (tagToRemove) => {
     setSelectedTags(selectedTags.filter((tag) => tag !== tagToRemove));
   };
+  async function sendStatus(title, content) {
+    await FireStore(title, content);
+    await setIsOpen(false);
+    setTitle("");
+    setContent("");
+  }
+  // Here you would typically send the post data to your backend or Firestore
 
   if (!isOpen) return null;
 
@@ -205,7 +213,7 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
                     Icon: Lock,
                     color: "text-orange-600",
                   },
-                ].map(({ val, label, Icon, color }) => (
+                ].map(({ val, Icon, label, color }) => (
                   <button
                     key={val}
                     onClick={() => setVisibility(val)}
@@ -328,7 +336,11 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
             <button className="px-6 py-2 cursor-pointer bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors">
               Save Draft
             </button>
-            <button className="px-2 cursor-pointer sm:px-6 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md">
+            <button
+              className="px-2 cursor-pointer sm:px-6 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+              onClick={() => sendStatus(title, content)}
+              disabled={!title && !content}
+            >
               Publish Post
             </button>
           </div>
