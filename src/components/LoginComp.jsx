@@ -4,6 +4,8 @@ import { RegisterApi } from "../api/AuthApi";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebaseConfig";
+import { provider } from "../firebaseConfig";
+import { signInWithPopup } from "firebase/auth";
 const LoginComp = () => {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({});
@@ -17,11 +19,24 @@ const LoginComp = () => {
       toast.error("Login Failed: ");
     }
   }
+  // const signInWithGoogle = async () => {
+  //   let response = GoogleAuthApi();
+  //   console.log(response);
+  //   navigate("/home");
+  // };
+
   const signInWithGoogle = async () => {
-    let response = GoogleAuthApi();
-    console.log(response);
-    navigate("/home");
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      console.log("User signed in with Google:", user);
+      // Do something with user info — e.g., redirect or save to DB
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      alert(error.message); // Optional user-friendly error
+    }
   };
+
   // const user = auth.currentUser;
   // localStorage.setItem(
   //   "userEmail",
