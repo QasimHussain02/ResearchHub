@@ -3,6 +3,7 @@ import { AuthApi, GoogleAuthApi } from "../api/AuthApi";
 import { RegisterApi } from "../api/AuthApi";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
+import { auth } from "../firebaseConfig";
 const LoginComp = () => {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({});
@@ -21,6 +22,11 @@ const LoginComp = () => {
     console.log(response);
     navigate("/home");
   };
+  // const user = auth.currentUser;
+  // localStorage.setItem(
+  //   "userEmail",
+  //   user ? user.email : credentials.email || ""
+  // );
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#F4F4F4]">
       <div className="w-full max-w-sm text-center">

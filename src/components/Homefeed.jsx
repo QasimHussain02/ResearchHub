@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { auth } from "../firebaseConfig";
+import { getStatus, getUser } from "../api/FireStore";
 import {
   Heart,
   MessageCircle,
@@ -18,75 +20,15 @@ const Homefeed = () => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
 
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      type: "research-paper",
-      author: "Dr. Sarah Ahmed",
-      authorInitials: "SA",
-      authorBg: "bg-gradient-to-br from-blue-500 to-purple-600",
-      time: "2 hours ago",
-      title:
-        "Machine Learning Applications in Healthcare: A Comprehensive Review",
-      excerpt:
-        "This paper presents a systematic review of machine learning applications in healthcare, covering predictive modeling, diagnostic imaging, and personalized treatment approaches. We analyzed 150+ recent studies and identified key trends...",
-      tags: ["Machine Learning", "Healthcare", "AI", "Medical Technology"],
-      likes: 24,
-      comments: 12,
-      liked: false,
-    },
-    {
-      id: 2,
-      type: "discussion",
-      author: "Muhammad Walid",
-      authorInitials: "MW",
-      authorBg: "bg-gradient-to-br from-green-500 to-teal-600",
-      time: "4 hours ago",
-      title: "Best Practices for Data Visualization in Research Papers?",
-      excerpt:
-        "I'm working on my final year project and struggling with creating effective data visualizations. What tools and techniques do you recommend for presenting complex datasets in research papers? Looking for both free and paid options...",
-      tags: ["Data Visualization", "Research Methods", "Statistics"],
-      likes: 18,
-      comments: 8,
-      liked: false,
-    },
-    {
-      id: 3,
-      type: "project",
-      author: "Ali Khan",
-      authorInitials: "AK",
-      authorBg: "bg-gradient-to-br from-orange-500 to-red-600",
-      time: "6 hours ago",
-      title: "Smart Campus Navigation System - Final Year Project",
-      excerpt:
-        "Developed an AR-based navigation system for university campuses using React Native and Firebase. The app helps students find classrooms, labs, and facilities using augmented reality markers. Open source and available for collaboration...",
-      tags: ["Augmented Reality", "React Native", "Firebase", "Mobile App"],
-      likes: 31,
-      comments: 15,
-      liked: false,
-    },
-    {
-      id: 4,
-      type: "research-paper",
-      author: "Dr. Fatima Hassan",
-      authorInitials: "FH",
-      authorBg: "bg-gradient-to-br from-purple-500 to-pink-600",
-      time: "1 day ago",
-      title:
-        "Blockchain Integration in Educational Systems: Challenges and Opportunities",
-      excerpt:
-        "This study explores the potential of blockchain technology in educational credential verification, student record management, and secure academic transactions. We propose a framework for implementing blockchain in Pakistani universities...",
-      tags: [
-        "Blockchain",
-        "Education Technology",
-        "Security",
-        "Digital Credentials",
-      ],
-      likes: 42,
-      comments: 20,
-      liked: false,
-    },
-  ]);
+  const [posts, setPosts] = useState([]);
+  useMemo(() => {
+    getStatus(setPosts);
+  }, []);
+  useMemo(() => {
+    getUser();
+  }, []);
+  localStorage.setItem("userEmail", auth.currentUser.email);
+  // console.log(localStorage.getItem("userEmail"));
 
   const [trendingTopics] = useState([
     {
@@ -112,27 +54,6 @@ const Homefeed = () => {
       title: "Cybersecurity",
       count: "43 discussions",
       color: "bg-red-500",
-    },
-  ]);
-
-  const [suggestedUsers] = useState([
-    {
-      name: "Sarah Thompson",
-      field: "Data Science",
-      initials: "ST",
-      bg: "bg-gradient-to-br from-blue-400 to-blue-600",
-    },
-    {
-      name: "Ahmad Hassan",
-      field: "Computer Vision",
-      initials: "AH",
-      bg: "bg-gradient-to-br from-green-400 to-green-600",
-    },
-    {
-      name: "Lisa Martinez",
-      field: "AI Ethics",
-      initials: "LM",
-      bg: "bg-gradient-to-br from-purple-400 to-purple-600",
     },
   ]);
 

@@ -8,11 +8,29 @@ import {
   User,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
+import { onLogut } from "../api/AuthApi";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [isPopupOpenMobile, setIsPopupOpenMobile] = useState(false);
+  const navigate = useNavigate();
+  const togglePopup = () => {
+    setIsPopupOpen(!isPopupOpen);
+  };
+  const togglePopupMobile = () => {
+    setIsPopupOpenMobile(!isPopupOpenMobile);
+  };
+  const handleLogout = () => {
+    // Handle logout logic here
+    console.log("Logging out...");
+    onLogut();
+    setIsPopupOpen(false);
+  };
 
   const navigationItems = [
     { icon: Home, label: "Home", active: true },
@@ -26,7 +44,7 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <div>
+          <div className="cursor-pointer" onClick={() => navigate("/home")}>
             {" "}
             <img className="h-6 sm:h-7" src="logo.jpeg" alt="" />{" "}
           </div>
@@ -62,12 +80,36 @@ const Navbar = () => {
             ))}
 
             {/* Profile Button */}
-            <button className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer">
+            <button
+              className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer"
+              onClick={togglePopup}
+            >
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <User className="h-5 w-5 text-white" />
               </div>
             </button>
           </div>
+          {/* Popup Dropdown */}
+          {isPopupOpen && (
+            <>
+              {/* Backdrop */}
+              <div
+                className="fixed inset-0 z-10 "
+                onClick={() => setIsPopupOpen(false)}
+              />
+
+              {/* Popup Menu */}
+              <div className="absolute top-12 right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <LogOut className="w-4 h-4 mr-3" />
+                  Logout
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Mobile Menu Button */}
           <div className="md:hidden flex items-center space-x-2">
@@ -129,12 +171,35 @@ const Navbar = () => {
               ))}
 
               {/* Mobile Profile Button */}
-              <button className="flex items-center space-x-3 p-3 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer">
+              <button
+                className="flex items-center space-x-3 p-3 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 cursor-pointer"
+                onClick={togglePopupMobile}
+              >
                 <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <span className="text-sm font-medium">Profile</span>
               </button>
+              {isPopupOpenMobile && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setIsPopupOpen(false)}
+                  />
+
+                  {/* Popup Menu */}
+                  <div className="absolute bottom-3 left-32 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 mr-3" />
+                      Logout
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
