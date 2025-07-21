@@ -37,59 +37,154 @@ export const getStatus = (setPosts) => {
   });
 };
 
+// Enhanced postUserData function to ensure user document exists
 export const postUserData = async (userData) => {
   const uid = auth.currentUser?.uid;
 
   try {
     if (!uid) {
       console.error("User not authenticated");
-      return;
+      return { success: false, error: "User not authenticated" };
     }
+
+    // Ensure we have basic user data
+    const userEmail = auth.currentUser?.email;
+    const userName =
+      userData.name || auth.currentUser?.displayName || "Anonymous User";
+
+    const completeUserData = {
+      name: userName,
+      email: userEmail,
+      bio: "",
+      headline: "",
+      about: "",
+      location: "",
+      institution: "",
+      website: "",
+      followers: [],
+      following: [],
+      interests: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...userData, // Override with provided data
+    };
+
+    await setDoc(doc(userRef, uid), completeUserData);
+    console.log("User document created/updated successfully");
+    return { success: true };
   } catch (error) {
-    console.error("Error getting current user UID:", error);
+    console.error("Error creating/updating user document:", error);
+    return { success: false, error: error.message };
   }
-  let object = { ...userData };
-  await setDoc(doc(userRef, uid), object);
 };
 
+// Function to ensure user document exists
+export const ensureUserDocument = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return null;
+
+  try {
+    const userDocRef = doc(userRef, currentUser.uid);
+    const docSnap = await getDoc(userDocRef);
+
+    if (!docSnap.exists()) {
+      // Create basic user document
+      const basicUserData = {
+        name: currentUser.displayName || "Anonymous User",
+        email: currentUser.email,
+        bio: "",
+        headline: "",
+        about: "",
+        location: "",
+        institution: "",
+        website: "",
+        followers: [],
+        following: [],
+        interests: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      await setDoc(userDocRef, basicUserData);
+      console.log("Basic user document created");
+      return { id: currentUser.uid, ...basicUserData };
+    }
+
+    return { id: docSnap.id, ...docSnap.data() };
+  } catch (error) {
+    console.error("Error ensuring user document:", error);
+    return null;
+  }
+};
+
+// Enhanced getUser function with real-time updates
 export const getUser = (setCurrUser) => {
   onAuthStateChanged(auth, (user) => {
     if (user) {
-      const currUser = user.email;
-      onSnapshot(userRef, (data) => {
-        const allUsers = data.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        }));
-        const matchedUser = allUsers.find((u) => u.email === currUser);
-        setCurrUser(matchedUser);
+      // Set up real-time listener for the current user's data
+      const userDocRef = doc(userRef, user.uid);
+      onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = { id: docSnap.id, ...docSnap.data() };
+          setCurrUser(userData);
+        } else {
+          console.log("User document not found");
+          setCurrUser(null);
+        }
       });
     } else {
       console.log("User not authenticated.");
+      setCurrUser(null);
     }
   });
 };
 
+// Enhanced editUser function with better error handling and real-time updates
 export const editUser = async (payload) => {
   const currentUser = auth.currentUser;
 
   if (!currentUser) {
     console.error("No authenticated user found.");
-    return;
+    return { success: false, error: "No authenticated user" };
   }
 
-  const userDocRef = doc(userRef, currentUser.uid);
-  const docSnap = await getDoc(userDocRef);
+  try {
+    const userDocRef = doc(userRef, currentUser.uid);
+    const docSnap = await getDoc(userDocRef);
 
-  if (docSnap.exists()) {
-    await updateDoc(userDocRef, payload);
-    console.log("User document updated successfully");
-  } else {
-    console.warn("⚠️ User document not found. Not updating or creating.");
+    if (docSnap.exists()) {
+      // Update the user document
+      await updateDoc(userDocRef, payload);
+      console.log("User document updated successfully");
+
+      // Update the display name in Firebase Auth if name was changed
+      if (payload.name && currentUser.displayName !== payload.name) {
+        try {
+          await currentUser.updateProfile({
+            displayName: payload.name,
+          });
+          console.log("Firebase Auth display name updated");
+        } catch (authError) {
+          console.warn(
+            "Could not update Firebase Auth display name:",
+            authError
+          );
+        }
+      }
+
+      return { success: true };
+    } else {
+      console.warn("⚠️ User document not found. Creating new document.");
+      await setDoc(userDocRef, payload);
+      return { success: true };
+    }
+  } catch (error) {
+    console.error("Error updating user document:", error);
+    return { success: false, error: error.message };
   }
 };
 
-// Updated getUserDataByUID function
+// Updated getUserDataByUID function with better error handling
 export const getUserDataByUID = async (uid) => {
   try {
     if (!uid) {
@@ -114,6 +209,36 @@ export const getUserDataByUID = async (uid) => {
   }
 };
 
+// Real-time user data listener
+export const getUserDataByUIDRealtime = (uid, setUserData) => {
+  if (!uid) {
+    console.error("No UID provided for real-time user data");
+    setUserData(null);
+    return null;
+  }
+
+  const userDocRef = doc(userRef, uid);
+
+  const unsubscribe = onSnapshot(
+    userDocRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = { id: docSnap.id, ...docSnap.data() };
+        setUserData(userData);
+      } else {
+        console.log("User document not found for UID:", uid);
+        setUserData(null);
+      }
+    },
+    (error) => {
+      console.error("Error in real-time user data listener:", error);
+      setUserData(null);
+    }
+  );
+
+  return unsubscribe; // Return the unsubscribe function
+};
+
 // Alternative function using callback (for compatibility with existing code)
 export const getUserDataByUIDWithCallback = async (uid, setUserData) => {
   try {
@@ -131,23 +256,25 @@ export const getUserDataByUIDWithCallback = async (uid, setUserData) => {
   }
 };
 
-// Function to get user posts by UID
-export const getUserPosts = (uid, setPosts) => {
-  if (!uid) {
-    console.error("No UID provided for getting user posts");
-    return;
+// Enhanced function to get user posts with real-time updates
+export const getUserPosts = (userEmail, setPosts) => {
+  if (!userEmail) {
+    console.error("No user email provided for getting user posts");
+    return null;
   }
 
-  // Create a query to get posts where the user UID matches
-  const q = query(docRef, where("currUser.uid", "==", uid));
+  // Create a query to get posts where the user email matches
+  const q = query(docRef, where("currUser.email", "==", userEmail));
 
-  onSnapshot(q, (querySnapshot) => {
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
     const userPosts = querySnapshot.docs.map((doc) => ({
       ...doc.data(),
       id: doc.id,
     }));
     setPosts(userPosts);
   });
+
+  return unsubscribe;
 };
 
 // Function to get user by email
@@ -223,5 +350,33 @@ export const toggleFollowUser = async (targetUID, isFollowing) => {
   } catch (error) {
     console.error("Error toggling follow status:", error);
     return false;
+  }
+};
+
+// Function to update posts when user name changes
+export const updateUserNameInPosts = async (newName, userEmail) => {
+  try {
+    if (!userEmail || !newName) {
+      console.error("Missing required parameters for updating posts");
+      return;
+    }
+
+    // Get all posts by this user
+    const q = query(docRef, where("currUser.email", "==", userEmail));
+    const querySnapshot = await getDocs(q);
+
+    // Update each post with the new name
+    const updatePromises = querySnapshot.docs.map((docSnapshot) => {
+      const postRef = doc(docRef, docSnapshot.id);
+      return updateDoc(postRef, {
+        "currUser.name": newName,
+        author: newName,
+      });
+    });
+
+    await Promise.all(updatePromises);
+    console.log(`Updated ${updatePromises.length} posts with new user name`);
+  } catch (error) {
+    console.error("Error updating user name in posts:", error);
   }
 };

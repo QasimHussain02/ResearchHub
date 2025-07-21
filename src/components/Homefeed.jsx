@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { auth } from "../firebaseConfig";
-import { getStatus, getUser, getUserDataByUID } from "../api/FireStore";
+import { getStatus, getUser } from "../api/FireStore";
 import {
   Heart,
   MessageCircle,
@@ -15,26 +15,24 @@ import {
   Code,
 } from "lucide-react";
 import CreatePost from "../pages/CreatePost";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const Homefeed = ({ currUser }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
   const [userData, setUserData] = useState({});
-  let currentUser = auth.currentUser.uid;
-
-  useEffect(() => {
-    getUserDataByUID(currentUser, setUserData);
-  }, []);
-  // console.log(userData.name);
-
   const [posts, setPosts] = useState([]);
+  const navigate = useNavigate();
+
+  // Set up real-time listener for current user data
+  useEffect(() => {
+    getUser(setUserData);
+  }, []);
+
+  // Set up real-time listener for posts
   useMemo(() => {
     getStatus(setPosts);
   }, []);
-
-  localStorage.setItem("userEmail", auth.currentUser.email);
-  // console.log(localStorage.getItem("userEmail"));
 
   const [trendingTopics] = useState([
     {
@@ -122,6 +120,24 @@ const Homefeed = ({ currUser }) => {
     }
   };
 
+  const handleProfileClick = (post) => {
+    if (post.currUser?.id === auth.currentUser?.uid) {
+      navigate("/my-profile");
+    } else if (post.currUser?.id) {
+      navigate(`/profile/${post.currUser.id}`);
+    }
+  };
+
+  const getProfileInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   return (
     <div className="min-h-screen bg-white">
       {/* Main Container */}
@@ -132,7 +148,7 @@ const Homefeed = ({ currUser }) => {
             <CreatePost
               isOpen={isOpen}
               setIsOpen={setIsOpen}
-              currUser={currUser}
+              currUser={userData || currUser}
             />
           )}
           <div className="lg:col-span-3">
@@ -167,59 +183,64 @@ const Homefeed = ({ currUser }) => {
               </div>
 
               {/* Posts */}
-              {
-                <div className="space-y-6">
-                  {filteredPosts.map((post, index) => (
-                    <div
-                      key={post.id}
-                      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
-                      style={{
-                        animationDelay: `${index * 100}ms`,
-                      }}
-                    >
-                      {/* Post Header */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-4">
-                          <div
-                            className={`w-12 h-12 rounded-full ${post.authorBg} flex items-center justify-center text-white font-bold text-sm`}
-                          >
-                            {post.authorInitials}
-                          </div>
-
-                          <div>
-                            <Link
-                              to={
-                                post.currUser?.id === currentUser
-                                  ? "/my-profile"
-                                  : `/profile/${post.currUser?.id}`
-                              }
-                              className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900"
-                            >
-                              {post.author}
-                            </Link>
-                            <p className="text-sm text-gray-500">{post.time}</p>
-                          </div>
-                        </div>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
-                            post.type
-                          )}`}
+              <div className="space-y-6">
+                {filteredPosts.map((post, index) => (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
+                    style={{
+                      animationDelay: `${index * 100}ms`,
+                    }}
+                  >
+                    {/* Post Header */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-4">
+                        <div
+                          onClick={() => handleProfileClick(post)}
+                          className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:shadow-lg transition-all duration-200"
                         >
-                          {getPostTypeLabel(post.type)}
-                        </span>
-                      </div>
+                          {getProfileInitials(
+                            post.currUser?.name || post.author
+                          )}
+                        </div>
 
-                      {/* Post Content */}
-                      <div className="mb-4">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
-                          {post.title}
-                        </h2>
-                        <p className="text-gray-600 leading-relaxed">
-                          {post.excerpt}
-                        </p>
+                        <div>
+                          <button
+                            onClick={() => handleProfileClick(post)}
+                            className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900 transition-colors"
+                          >
+                            {post.currUser?.name || post.author || "Anonymous"}
+                          </button>
+                          <p className="text-sm text-gray-500">
+                            {post.timeStamp
+                              ? new Date(
+                                  post.timeStamp.seconds * 1000
+                                ).toLocaleDateString()
+                              : post.time || "Recently"}
+                          </p>
+                        </div>
                       </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
+                          post.postType || post.type
+                        )}`}
+                      >
+                        {getPostTypeLabel(post.postType || post.type)}
+                      </span>
+                    </div>
 
-                      {/* Tags */}
+                    {/* Post Content */}
+                    <div className="mb-4">
+                      <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
+                        {post.title || post.status}
+                      </h2>
+                      <p className="text-gray-600 leading-relaxed">
+                        {post.description || post.excerpt || post.status}
+                      </p>
+                    </div>
+
+                    {/* Tags */}
+                    {post.tags && post.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">
                         {post.tags.map((tag, tagIndex) => (
                           <span
@@ -230,51 +251,85 @@ const Homefeed = ({ currUser }) => {
                           </span>
                         ))}
                       </div>
+                    )}
 
-                      {/* Post Actions */}
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
-                        <div className="flex space-x-4">
+                    {/* File Preview */}
+                    {post.fileURL && (
+                      <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            {post.fileType === "pdf" ? "📄" : "📎"}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">
+                              {post.fileName || "Attached file"}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {post.fileType
+                                ? post.fileType.toUpperCase()
+                                : "File"}{" "}
+                              • Click to view
+                            </p>
+                          </div>
                           <button
-                            onClick={() => handleLike(post.id)}
-                            className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                              post.liked
-                                ? "bg-red-500 text-white shadow-lg"
-                                : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
-                            }`}
+                            onClick={() => window.open(post.fileURL, "_blank")}
+                            className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
                           >
-                            <Heart
-                              className={`w-4 h-4 ${
-                                post.liked ? "fill-current" : ""
-                              }`}
-                            />
-                            <span>Like ({post.likes})</span>
-                          </button>
-                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
-                            <MessageCircle className="w-4 h-4" />
-                            <span>Comment ({post.comments})</span>
-                          </button>
-                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
-                            <Share2 className="w-4 h-4" />
-                            <span>Share</span>
+                            View
                           </button>
                         </div>
-                        {post.type === "research-paper" && (
-                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300">
+                      </div>
+                    )}
+
+                    {/* Post Actions */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
+                      <div className="flex space-x-4">
+                        <button
+                          onClick={() => handleLike(post.id)}
+                          className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                            post.liked
+                              ? "bg-red-500 text-white shadow-lg"
+                              : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                          }`}
+                        >
+                          <Heart
+                            className={`w-4 h-4 ${
+                              post.liked ? "fill-current" : ""
+                            }`}
+                          />
+                          <span>Like ({post.likes || 0})</span>
+                        </button>
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Comment ({post.comments || 0})</span>
+                        </button>
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
+                          <Share2 className="w-4 h-4" />
+                          <span>Share</span>
+                        </button>
+                      </div>
+                      {(post.postType === "research-paper" ||
+                        post.type === "research-paper") &&
+                        post.fileURL && (
+                          <button
+                            onClick={() => window.open(post.fileURL, "_blank")}
+                            className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                          >
                             <Download className="w-4 h-4" />
                             <span>Download PDF</span>
                           </button>
                         )}
-                        {post.type === "project" && (
-                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
-                            <Eye className="w-4 h-4" />
-                            <span>View Project</span>
-                          </button>
-                        )}
-                      </div>
+                      {(post.postType === "project" ||
+                        post.type === "project") && (
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
+                          <Eye className="w-4 h-4" />
+                          <span>View Project</span>
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              }
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
