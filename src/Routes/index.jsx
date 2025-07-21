@@ -8,5 +8,6 @@ export const router = createBrowserRouter([
   { path: "/", element: <Login /> },
   { path: "/register", element: <Signup /> },
   { path: "/home", element: <Home /> },
-  { path: "/profile", element: <Profile /> },
+  { path: "/my-profile", element: <Profile /> },
+  { path: "/profile/:uid", element: <Profile /> },
 ]);

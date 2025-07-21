@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ProfileComponent from "../components/ProfileComponent";
 import Navbar from "../common/navbar";
-import { getUser } from "../api/FireStore";
+import { getUser, getUserDataByUID } from "../api/FireStore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
 import Loader from "../components/Loader";
 
 export default function Profile() {
-  const [currUser, setCurrUser] = useState(null);
+  const [userData, setUserData] = useState({});
   useEffect(() => {
-    getUser(setCurrUser);
+    getUserDataByUID(auth.currentUser?.uid, setUserData);
   }, []);
   const [loading, setLoading] = useState(true);
   let navigate = useNavigate();
@@ -33,7 +33,7 @@ export default function Profile() {
       ) : (
         <>
           <Navbar />
-          {currUser ? <ProfileComponent currentUser={currUser} /> : <Loader />}
+          {userData ? <ProfileComponent userData={userData} /> : <Loader />}
         </>
       )}
     </>

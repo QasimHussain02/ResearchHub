@@ -43,14 +43,17 @@ export default function PostsProfile({ currentUser }) {
       )
     );
   };
+  console.log(posts);
 
   return (
     <>
       <div className="mt-10 ml-12 text-3xl font-bold">Posts</div>
 
       <div className="space-y-6 mt-12">
-        {posts.filter((post) => post.currUser.email === currentUser.email)
-          .length === 0 ? (
+        {posts.filter(
+          (post) =>
+            post.currUser?.email && post.currUser.email === currentUser.email
+        ).length === 0 ? (
           <div className="text-center text-gray-500 text-lg font-medium py-20">
             <div className="text-4xl mb-4">📝</div>
             <p>No posts yet</p>
@@ -60,7 +63,11 @@ export default function PostsProfile({ currentUser }) {
           </div>
         ) : (
           posts
-            .filter((post) => post.currUser.email === currentUser.email)
+            .filter(
+              (post) =>
+                post.currUser?.email &&
+                post.currUser.email === currentUser.email
+            )
             .map((post, index) => (
               <div
                 key={post.id}

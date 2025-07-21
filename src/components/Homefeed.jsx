@@ -15,13 +15,16 @@ import {
   Code,
 } from "lucide-react";
 import CreatePost from "../pages/CreatePost";
+import { Link } from "react-router-dom";
 
 const Homefeed = ({ currUser }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
   const [userData, setUserData] = useState({});
+  let currentUser = auth.currentUser.uid;
+
   useEffect(() => {
-    getUserDataByUID(auth.currentUser.uid, setUserData);
+    getUserDataByUID(currentUser, setUserData);
   }, []);
   // console.log(userData.name);
 
@@ -182,10 +185,18 @@ const Homefeed = ({ currUser }) => {
                           >
                             {post.authorInitials}
                           </div>
+
                           <div>
-                            <h3 className="font-semibold text-gray-900">
+                            <Link
+                              to={
+                                post.currUser?.id === currentUser
+                                  ? "/my-profile"
+                                  : `/profile/${post.currUser?.id}`
+                              }
+                              className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900"
+                            >
                               {post.author}
-                            </h3>
+                            </Link>
                             <p className="text-sm text-gray-500">{post.time}</p>
                           </div>
                         </div>
