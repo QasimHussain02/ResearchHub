@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   Upload,
@@ -10,15 +10,21 @@ import {
   Globe,
   Lock,
 } from "lucide-react";
-import FireStore from "../api/FireStore";
+import FireStore, { getUserDataByUID } from "../api/FireStore";
 import { getAuth } from "firebase/auth";
+import { auth } from "../firebaseConfig";
 
-const CreatePost = ({ isOpen, setIsOpen }) => {
+const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
   const [postType, setPostType] = useState("discussion");
   const [visibility, setVisibility] = useState("public");
   const [selectedTags, setSelectedTags] = useState([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [userData, setUserData] = useState({});
+  useEffect(() => {
+    getUserDataByUID(auth.currentUser.uid, setUserData);
+  }, []);
+  console.log(userData.name);
 
   const postTypes = [
     {
@@ -80,7 +86,7 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
     const uid = user?.uid || "unknown";
 
     // Generate initials from display name
-    const initials = displayName
+    const initials = userData.name
       .split(" ")
       .map((n) => n[0])
       .join("")
@@ -94,7 +100,7 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
       tags: selectedTags,
       type: postType,
       visibility,
-      author: displayName,
+      author: userData.name,
       authorInitials: initials,
       authorEmail: email,
       authorId: uid,
@@ -102,6 +108,7 @@ const CreatePost = ({ isOpen, setIsOpen }) => {
       comments: 0,
       liked: false,
       time: new Date().toLocaleString(),
+      currUser: currUser,
     };
 
     await FireStore(postData);

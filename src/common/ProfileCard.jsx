@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Edit3, FileText, Users, MessageCircle, Plus, X } from "lucide-react";
 import { getUser } from "../api/FireStore";
+import { auth } from "../firebaseConfig";
 
-export default function UserProfileCard({ onEdit }) {
+export default function UserProfileCard({ onEdit, currentUser }) {
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [showInterestsPopup, setShowInterestsPopup] = useState(false);
-  const [name, setName] = useState("");
 
   const availableInterests = [
     { name: "Machine Learning", color: "bg-blue-100 text-blue-800" },
@@ -32,9 +32,7 @@ export default function UserProfileCard({ onEdit }) {
       }
     });
   };
-  useMemo(() => {
-    getUser();
-  }, []);
+
   const handleSaveInterests = () => {
     setShowInterestsPopup(false);
   };
@@ -112,14 +110,14 @@ export default function UserProfileCard({ onEdit }) {
             {/* User Info */}
             <div className="mb-6 sm:mb-8 text-center lg:text-left">
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
-                Dr. Sarah Johnson
+                {currentUser.name || auth.currentUser.displayName}
               </h1>
               <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-3 sm:mb-4">
-                Professor of Computer Science at Stanford University
+                {currentUser.headline}
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6">
                 <p className="text-sm sm:text-base md:text-lg text-gray-700 text-center lg:text-left">
-                  Software Engineer | AI Researcher | CS Professor
+                  {currentUser.bio}
                 </p>
                 <button onClick={onEdit}>
                   <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
@@ -166,11 +164,7 @@ export default function UserProfileCard({ onEdit }) {
                 About
               </h3>
               <p className="text-gray-700 text-sm sm:text-base md:text-lg leading-relaxed">
-                Leading researcher in artificial intelligence and machine
-                learning with over 15 years of experience. Published extensively
-                in top-tier conferences and journals. Currently focusing on
-                advancing the field of computer vision and its applications in
-                autonomous systems.
+                {currentUser.about}
               </p>
             </div>
 
@@ -182,7 +176,7 @@ export default function UserProfileCard({ onEdit }) {
                 </h3>
                 <button
                   onClick={() => setShowInterestsPopup(true)}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-fit"
+                  className="flex cursor-pointer items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-fit"
                 >
                   <Plus className="w-4 h-4" />
                   Add Interests

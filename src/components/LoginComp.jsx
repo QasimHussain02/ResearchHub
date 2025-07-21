@@ -3,9 +3,10 @@ import { AuthApi, GoogleAuthApi } from "../api/AuthApi";
 import { RegisterApi } from "../api/AuthApi";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { provider } from "../firebaseConfig";
 import { signInWithPopup } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 const LoginComp = () => {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({});
@@ -29,9 +30,22 @@ const LoginComp = () => {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      console.log("User signed in with Google:", user);
-      // Do something with user info — e.g., redirect or save to DB
+      const userDocRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userDocRef);
+      if (!userSnap.exists()) {
+        // Create the user in Firestore if not exists
+        await setDoc(userDocRef, {
+          name: user.displayName,
+          email: user.email,
+          role: "",
+        });
+        // console.log("✅ Google user added to Firestore");
+      } else {
+        console.log("🔁 Google user already exists in Firestore");
+      }
     } catch (error) {
+      // console.log("User signed in with Google:", user);
+      // Do something with user info — e.g., redirect or save to DB
       console.error("Google sign-in error:", error);
       alert(error.message); // Optional user-friendly error
     }

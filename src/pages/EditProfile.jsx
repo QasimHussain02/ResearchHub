@@ -1,7 +1,10 @@
 import React, { useState } from "react";
+import { editUser, getUserDataByUID } from "../api/FireStore";
+import { auth } from "../firebaseConfig";
 
 const EditProfile = ({ setShowEditPopup }) => {
   const [editInput, setEditInput] = useState({});
+
   const editInputChange = (e) => {
     let { name, value } = e.target;
     let input = { [name]: value };
@@ -9,7 +12,23 @@ const EditProfile = ({ setShowEditPopup }) => {
       return { ...prev, ...input };
     });
   };
-  console.log(editInput);
+  function updateUser(e) {
+    e.preventDefault();
+
+    if (
+      !editInput.name &&
+      !editInput.headline &&
+      !editInput.bio &&
+      !editInput.about
+    ) {
+      return;
+    }
+    let currUser = auth.currentUser;
+
+    editUser(editInput);
+    setShowEditPopup(false);
+    setEditInput({});
+  }
 
   return (
     <div className="min-h-screen h-full bg-white flex items-center justify-center px-4">
@@ -56,7 +75,8 @@ const EditProfile = ({ setShowEditPopup }) => {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
+            onClick={(e) => updateUser(e)}
+            className="w-full cursor-pointer bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
           >
             Save Changes
           </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { auth } from "../firebaseConfig";
-import { getStatus, getUser } from "../api/FireStore";
+import { getStatus, getUser, getUserDataByUID } from "../api/FireStore";
 import {
   Heart,
   MessageCircle,
@@ -16,17 +16,20 @@ import {
 } from "lucide-react";
 import CreatePost from "../pages/CreatePost";
 
-const Homefeed = () => {
+const Homefeed = ({ currUser }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
+  const [userData, setUserData] = useState({});
+  useEffect(() => {
+    getUserDataByUID(auth.currentUser.uid, setUserData);
+  }, []);
+  // console.log(userData.name);
 
   const [posts, setPosts] = useState([]);
   useMemo(() => {
     getStatus(setPosts);
   }, []);
-  useMemo(() => {
-    getUser();
-  }, []);
+
   localStorage.setItem("userEmail", auth.currentUser.email);
   // console.log(localStorage.getItem("userEmail"));
 
@@ -122,7 +125,13 @@ const Homefeed = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Main Feed */}
-          {isOpen && <CreatePost isOpen={isOpen} setIsOpen={setIsOpen} />}
+          {isOpen && (
+            <CreatePost
+              isOpen={isOpen}
+              setIsOpen={setIsOpen}
+              currUser={currUser}
+            />
+          )}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
               {/* Feed Header */}
@@ -155,104 +164,106 @@ const Homefeed = () => {
               </div>
 
               {/* Posts */}
-              <div className="space-y-6">
-                {filteredPosts.map((post, index) => (
-                  <div
-                    key={post.id}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
-                    style={{
-                      animationDelay: `${index * 100}ms`,
-                    }}
-                  >
-                    {/* Post Header */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div
-                          className={`w-12 h-12 rounded-full ${post.authorBg} flex items-center justify-center text-white font-bold text-sm`}
-                        >
-                          {post.authorInitials}
+              {
+                <div className="space-y-6">
+                  {filteredPosts.map((post, index) => (
+                    <div
+                      key={post.id}
+                      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
+                      style={{
+                        animationDelay: `${index * 100}ms`,
+                      }}
+                    >
+                      {/* Post Header */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div
+                            className={`w-12 h-12 rounded-full ${post.authorBg} flex items-center justify-center text-white font-bold text-sm`}
+                          >
+                            {post.authorInitials}
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">
+                              {post.author}
+                            </h3>
+                            <p className="text-sm text-gray-500">{post.time}</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            {post.author}
-                          </h3>
-                          <p className="text-sm text-gray-500">{post.time}</p>
-                        </div>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
-                          post.type
-                        )}`}
-                      >
-                        {getPostTypeLabel(post.type)}
-                      </span>
-                    </div>
-
-                    {/* Post Content */}
-                    <div className="mb-4">
-                      <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
-                        {post.title}
-                      </h2>
-                      <p className="text-gray-600 leading-relaxed">
-                        {post.excerpt}
-                      </p>
-                    </div>
-
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {post.tags.map((tag, tagIndex) => (
                         <span
-                          key={tagIndex}
-                          className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
+                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
+                            post.type
+                          )}`}
                         >
-                          {tag}
+                          {getPostTypeLabel(post.type)}
                         </span>
-                      ))}
-                    </div>
-
-                    {/* Post Actions */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
-                      <div className="flex space-x-4">
-                        <button
-                          onClick={() => handleLike(post.id)}
-                          className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                            post.liked
-                              ? "bg-red-500 text-white shadow-lg"
-                              : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
-                          }`}
-                        >
-                          <Heart
-                            className={`w-4 h-4 ${
-                              post.liked ? "fill-current" : ""
-                            }`}
-                          />
-                          <span>Like ({post.likes})</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
-                          <MessageCircle className="w-4 h-4" />
-                          <span>Comment ({post.comments})</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
-                          <Share2 className="w-4 h-4" />
-                          <span>Share</span>
-                        </button>
                       </div>
-                      {post.type === "research-paper" && (
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300">
-                          <Download className="w-4 h-4" />
-                          <span>Download PDF</span>
-                        </button>
-                      )}
-                      {post.type === "project" && (
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
-                          <Eye className="w-4 h-4" />
-                          <span>View Project</span>
-                        </button>
-                      )}
+
+                      {/* Post Content */}
+                      <div className="mb-4">
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
+                          {post.title}
+                        </h2>
+                        <p className="text-gray-600 leading-relaxed">
+                          {post.excerpt}
+                        </p>
+                      </div>
+
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {post.tags.map((tag, tagIndex) => (
+                          <span
+                            key={tagIndex}
+                            className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Post Actions */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
+                        <div className="flex space-x-4">
+                          <button
+                            onClick={() => handleLike(post.id)}
+                            className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                              post.liked
+                                ? "bg-red-500 text-white shadow-lg"
+                                : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                            }`}
+                          >
+                            <Heart
+                              className={`w-4 h-4 ${
+                                post.liked ? "fill-current" : ""
+                              }`}
+                            />
+                            <span>Like ({post.likes})</span>
+                          </button>
+                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
+                            <MessageCircle className="w-4 h-4" />
+                            <span>Comment ({post.comments})</span>
+                          </button>
+                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
+                            <Share2 className="w-4 h-4" />
+                            <span>Share</span>
+                          </button>
+                        </div>
+                        {post.type === "research-paper" && (
+                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300">
+                            <Download className="w-4 h-4" />
+                            <span>Download PDF</span>
+                          </button>
+                        )}
+                        {post.type === "project" && (
+                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
+                            <Eye className="w-4 h-4" />
+                            <span>View Project</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              }
             </div>
           </div>
 

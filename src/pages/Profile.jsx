@@ -8,7 +8,10 @@ import { useNavigate } from "react-router-dom";
 import Loader from "../components/Loader";
 
 export default function Profile() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currUser, setCurrUser] = useState(null);
+  useEffect(() => {
+    getUser(setCurrUser);
+  }, []);
   const [loading, setLoading] = useState(true);
   let navigate = useNavigate();
   useEffect(() => {
@@ -16,7 +19,6 @@ export default function Profile() {
       if (!res?.accessToken) {
         navigate("/");
       } else {
-        setCurrentUser(auth.currentUser.displayName);
         // console.log(auth.currentUser.email);
 
         setLoading(false);
@@ -31,11 +33,7 @@ export default function Profile() {
       ) : (
         <>
           <Navbar />
-          {currentUser ? (
-            <ProfileComponent currentUser={currentUser} />
-          ) : (
-            <p>no wayy</p>
-          )}
+          {currUser ? <ProfileComponent currentUser={currUser} /> : <Loader />}
         </>
       )}
     </>
