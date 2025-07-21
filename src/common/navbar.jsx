@@ -46,7 +46,11 @@ const Navbar = () => {
           {/* Logo */}
           <div className="cursor-pointer" onClick={() => navigate("/home")}>
             {" "}
-            <img className="h-6 sm:h-7" src="logo.jpeg" alt="" />{" "}
+            <img
+              className="h-6 sm:h-7"
+              src="/logo.jpeg"
+              alt="Research hub"
+            />{" "}
           </div>
 
           {/* Desktop Search Bar */}

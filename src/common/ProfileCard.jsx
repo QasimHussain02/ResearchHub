@@ -1,11 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Edit3, FileText, Users, MessageCircle, Plus, X } from "lucide-react";
-import { getUser } from "../api/FireStore";
+import React, { useState } from "react";
+import {
+  Edit3,
+  FileText,
+  Users,
+  MessageCircle,
+  Plus,
+  X,
+  UserPlus,
+  UserCheck,
+} from "lucide-react";
 import { auth } from "../firebaseConfig";
 
-export default function UserProfileCard({ onEdit, currentUser }) {
+export default function UserProfileCard({ onEdit, currentUser, isOwnProfile }) {
   const [selectedInterests, setSelectedInterests] = useState([]);
   const [showInterestsPopup, setShowInterestsPopup] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
 
   const availableInterests = [
     { name: "Machine Learning", color: "bg-blue-100 text-blue-800" },
@@ -23,6 +32,8 @@ export default function UserProfileCard({ onEdit, currentUser }) {
   ];
 
   const handleInterestToggle = (interest) => {
+    if (!isOwnProfile) return; // Only allow editing for own profile
+
     setSelectedInterests((prev) => {
       const isSelected = prev.some((item) => item.name === interest.name);
       if (isSelected) {
@@ -35,6 +46,12 @@ export default function UserProfileCard({ onEdit, currentUser }) {
 
   const handleSaveInterests = () => {
     setShowInterestsPopup(false);
+    // Here you would typically save to Firebase
+  };
+
+  const handleFollowToggle = () => {
+    setIsFollowing(!isFollowing);
+    // Here you would typically update Firebase
   };
 
   const stats = [
@@ -110,18 +127,20 @@ export default function UserProfileCard({ onEdit, currentUser }) {
             {/* User Info */}
             <div className="mb-6 sm:mb-8 text-center lg:text-left">
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
-                {currentUser.name || auth.currentUser.displayName}
+                {currentUser?.name || "User Name"}
               </h1>
               <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-3 sm:mb-4">
-                {currentUser.headline}
+                {currentUser?.headline || "Professional Title"}
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6">
                 <p className="text-sm sm:text-base md:text-lg text-gray-700 text-center lg:text-left">
-                  {currentUser.bio}
+                  {currentUser?.bio || "User bio"}
                 </p>
-                <button onClick={onEdit}>
-                  <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
-                </button>
+                {isOwnProfile && (
+                  <button onClick={onEdit}>
+                    <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
+                  </button>
+                )}
               </div>
 
               {/* Mobile Stats - Horizontal (after name) */}
@@ -149,12 +168,40 @@ export default function UserProfileCard({ onEdit, currentUser }) {
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8">
-                <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105">
-                  Follow
-                </button>
-                <button className="bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-gray-300 hover:border-gray-400 text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105">
-                  Message
-                </button>
+                {isOwnProfile ? (
+                  <button
+                    onClick={onEdit}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105"
+                  >
+                    Edit Profile
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleFollowToggle}
+                      className={`font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105 flex items-center gap-2 ${
+                        isFollowing
+                          ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                          : "bg-blue-600 hover:bg-blue-700 text-white"
+                      }`}
+                    >
+                      {isFollowing ? (
+                        <>
+                          <UserCheck className="w-5 h-5" />
+                          Following
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-5 h-5" />
+                          Follow
+                        </>
+                      )}
+                    </button>
+                    <button className="bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-gray-300 hover:border-gray-400 text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105">
+                      Message
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -164,7 +211,7 @@ export default function UserProfileCard({ onEdit, currentUser }) {
                 About
               </h3>
               <p className="text-gray-700 text-sm sm:text-base md:text-lg leading-relaxed">
-                {currentUser.about}
+                {currentUser?.about || "No information provided yet."}
               </p>
             </div>
 
@@ -174,13 +221,15 @@ export default function UserProfileCard({ onEdit, currentUser }) {
                 <h3 className="text-xl sm:text-2xl font-semibold text-gray-900">
                   Research Interests
                 </h3>
-                <button
-                  onClick={() => setShowInterestsPopup(true)}
-                  className="flex cursor-pointer items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-fit"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Interests
-                </button>
+                {isOwnProfile && (
+                  <button
+                    onClick={() => setShowInterestsPopup(true)}
+                    className="flex cursor-pointer items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-fit"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Interests
+                  </button>
+                )}
               </div>
 
               {selectedInterests.length > 0 ? (
@@ -196,19 +245,18 @@ export default function UserProfileCard({ onEdit, currentUser }) {
                 </div>
               ) : (
                 <p className="text-gray-500 italic text-sm sm:text-base">
-                  No research interests added yet. Click "Add Interests" to get
-                  started.
+                  {isOwnProfile
+                    ? 'No research interests added yet. Click "Add Interests" to get started.'
+                    : "No research interests added yet."}
                 </p>
               )}
             </div>
-
-            {/* Recent Activity */}
           </div>
         </div>
       </div>
 
-      {/* Interests Selection Popup */}
-      {showInterestsPopup && (
+      {/* Interests Selection Popup - Only show for own profile */}
+      {showInterestsPopup && isOwnProfile && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
             {/* Popup Header */}
