@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { auth } from "../firebaseConfig";
-import {
-  getPostsWithLikeStatus,
-  getUser,
-  toggleLikePost,
-} from "../api/FireStore";
+import { getStatus, getUser, toggleLike } from "../api/FireStore";
 import {
   Heart,
   MessageCircle,
@@ -20,6 +16,7 @@ import {
   Loader2,
 } from "lucide-react";
 import CreatePost from "../pages/CreatePost";
+import LikesModal from "../components/LikesModal";
 import { useNavigate } from "react-router-dom";
 
 const Homefeed = ({ currUser }) => {
@@ -27,7 +24,12 @@ const Homefeed = ({ currUser }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [userData, setUserData] = useState({});
   const [posts, setPosts] = useState([]);
-  const [likingPosts, setLikingPosts] = useState(new Set()); // Track which posts are being liked
+  const [likesModal, setLikesModal] = useState({
+    isOpen: false,
+    postId: null,
+    totalLikes: 0,
+  });
+  const [likingStates, setLikingStates] = useState({}); // Track which posts are being liked
   const navigate = useNavigate();
 
   // Set up real-time listener for current user data
@@ -35,10 +37,9 @@ const Homefeed = ({ currUser }) => {
     getUser(setUserData);
   }, []);
 
-  // Set up real-time listener for posts with like status
-  useEffect(() => {
-    const unsubscribe = getPostsWithLikeStatus(setPosts);
-    return () => unsubscribe && unsubscribe();
+  // Set up real-time listener for posts
+  useMemo(() => {
+    getStatus(setPosts);
   }, []);
 
   const [trendingTopics] = useState([
@@ -81,43 +82,37 @@ const Homefeed = ({ currUser }) => {
       return;
     }
 
-    // Prevent multiple like requests for the same post
-    if (likingPosts.has(postId)) return;
+    // Prevent multiple simultaneous like requests for the same post
+    if (likingStates[postId]) return;
 
-    // Add to liking posts set
-    setLikingPosts((prev) => new Set(prev).add(postId));
+    setLikingStates((prev) => ({ ...prev, [postId]: true }));
 
     try {
-      const result = await toggleLikePost(postId);
+      const result = await toggleLike(postId);
 
       if (result.success) {
-        // Update the local state immediately for better UX
-        setPosts((prevPosts) =>
-          prevPosts.map((post) =>
-            post.id === postId
-              ? {
-                  ...post,
-                  liked: result.liked,
-                  likes: result.newLikeCount,
-                }
-              : post
-          )
-        );
+        // The posts will be updated automatically through the real-time listener
+        console.log("Like toggled successfully");
       } else {
         console.error("Failed to toggle like:", result.error);
-        // You could show a toast notification here
+        alert("Failed to update like. Please try again.");
       }
     } catch (error) {
       console.error("Error toggling like:", error);
-      // You could show an error toast here
+      alert("An error occurred. Please try again.");
     } finally {
-      // Remove from liking posts set
-      setLikingPosts((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(postId);
-        return newSet;
-      });
+      setLikingStates((prev) => ({ ...prev, [postId]: false }));
     }
+  };
+
+  const handleLikesClick = (postId, totalLikes) => {
+    if (totalLikes > 0) {
+      setLikesModal({ isOpen: true, postId, totalLikes });
+    }
+  };
+
+  const closeLikesModal = () => {
+    setLikesModal({ isOpen: false, postId: null, totalLikes: 0 });
   };
 
   const handleFilterChange = (filter) => {
@@ -126,14 +121,9 @@ const Homefeed = ({ currUser }) => {
 
   const filteredPosts = posts.filter((post) => {
     if (activeFilter === "all") return true;
-    if (activeFilter === "papers")
-      return (
-        post.postType === "research-paper" || post.type === "research-paper"
-      );
-    if (activeFilter === "discussions")
-      return post.postType === "discussion" || post.type === "discussion";
-    if (activeFilter === "projects")
-      return post.postType === "project" || post.type === "project";
+    if (activeFilter === "papers") return post.type === "research-paper";
+    if (activeFilter === "discussions") return post.type === "discussion";
+    if (activeFilter === "projects") return post.type === "project";
     return true;
   });
 
@@ -181,18 +171,10 @@ const Homefeed = ({ currUser }) => {
       .slice(0, 2);
   };
 
-  const handleShare = (post) => {
-    if (navigator.share) {
-      navigator.share({
-        title: post.title || post.status,
-        text: post.description || post.excerpt || post.status,
-        url: window.location.href,
-      });
-    } else {
-      // Fallback - copy to clipboard
-      navigator.clipboard.writeText(window.location.href);
-      alert("Link copied to clipboard!");
-    }
+  // Check if current user liked a post
+  const isPostLikedByCurrentUser = (post) => {
+    if (!auth.currentUser || !post.likedBy) return false;
+    return post.likedBy.some((like) => like.uid === auth.currentUser.uid);
   };
 
   return (
@@ -208,6 +190,15 @@ const Homefeed = ({ currUser }) => {
               currUser={userData || currUser}
             />
           )}
+
+          {/* Likes Modal */}
+          <LikesModal
+            isOpen={likesModal.isOpen}
+            onClose={closeLikesModal}
+            postId={likesModal.postId}
+            totalLikes={likesModal.totalLikes}
+          />
+
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
               {/* Feed Header */}
@@ -241,198 +232,205 @@ const Homefeed = ({ currUser }) => {
 
               {/* Posts */}
               <div className="space-y-6">
-                {filteredPosts.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="text-4xl mb-4">📝</div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      No posts yet
-                    </h3>
-                    <p className="text-gray-500">
-                      Be the first to share something with the community!
-                    </p>
-                  </div>
-                ) : (
-                  filteredPosts.map((post, index) => (
-                    <div
-                      key={post.id}
-                      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
-                      style={{
-                        animationDelay: `${index * 100}ms`,
-                      }}
-                    >
-                      {/* Post Header */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-4">
-                          <div
-                            onClick={() => handleProfileClick(post)}
-                            className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:shadow-lg transition-all duration-200"
-                          >
-                            {getProfileInitials(
-                              post.currUser?.name || post.author
-                            )}
-                          </div>
-
-                          <div>
-                            <button
-                              onClick={() => handleProfileClick(post)}
-                              className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900 transition-colors"
-                            >
-                              {post.currUser?.name ||
-                                post.author ||
-                                "Anonymous"}
-                            </button>
-                            <p className="text-sm text-gray-500">
-                              {post.timeStamp
-                                ? new Date(
-                                    post.timeStamp.seconds * 1000
-                                  ).toLocaleDateString()
-                                : post.time || "Recently"}
-                            </p>
-                          </div>
-                        </div>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
-                            post.postType || post.type
-                          )}`}
+                {filteredPosts.map((post, index) => (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
+                    style={{
+                      animationDelay: `${index * 100}ms`,
+                    }}
+                  >
+                    {/* Post Header */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-4">
+                        <div
+                          onClick={() => handleProfileClick(post)}
+                          className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:shadow-lg transition-all duration-200"
                         >
-                          {getPostTypeLabel(post.postType || post.type)}
-                        </span>
-                      </div>
-
-                      {/* Post Content */}
-                      <div className="mb-4">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
-                          {post.title || post.status}
-                        </h2>
-                        <p className="text-gray-600 leading-relaxed">
-                          {post.description || post.excerpt || post.status}
-                        </p>
-                      </div>
-
-                      {/* Tags */}
-                      {post.tags && post.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {post.tags.map((tag, tagIndex) => (
-                            <span
-                              key={tagIndex}
-                              className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* File Preview */}
-                      {post.fileURL && (
-                        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                              {post.fileType === "pdf" ? "📄" : "📎"}
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">
-                                {post.fileName || "Attached file"}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {post.fileType
-                                  ? post.fileType.toUpperCase()
-                                  : "File"}{" "}
-                                • Click to view
-                              </p>
-                            </div>
-                            <button
-                              onClick={() =>
-                                window.open(post.fileURL, "_blank")
-                              }
-                              className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
-                            >
-                              View
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Post Actions */}
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
-                        <div className="flex space-x-4">
-                          <button
-                            onClick={() => handleLike(post.id)}
-                            disabled={likingPosts.has(post.id)}
-                            className={`flex cursor-pointer items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 disabled:opacity-70 ${
-                              post.liked
-                                ? "bg-red-500 text-white shadow-lg"
-                                : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
-                            }`}
-                          >
-                            {likingPosts.has(post.id) ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Heart
-                                className={`w-4 h-4 cursor-pointer ${
-                                  post.liked ? "fill-current" : ""
-                                }`}
-                              />
-                            )}
-                            <span>
-                              {likingPosts.has(post.id)
-                                ? "Loading..."
-                                : `Like (${post.likes || 0})`}
-                            </span>
-                          </button>
-
-                          <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
-                            <MessageCircle className="w-4 h-4" />
-                            <span>Comment ({post.comments || 0})</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleShare(post)}
-                            className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300"
-                          >
-                            <Share2 className="w-4 h-4" />
-                            <span>Share</span>
-                          </button>
-                        </div>
-
-                        {/* Action Buttons Based on Post Type */}
-                        <div className="flex gap-2">
-                          {(post.postType === "research-paper" ||
-                            post.type === "research-paper") &&
-                            post.fileURL && (
-                              <button
-                                onClick={() =>
-                                  window.open(post.fileURL, "_blank")
-                                }
-                                className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
-                              >
-                                <Download className="w-4 h-4" />
-                                <span>Download PDF</span>
-                              </button>
-                            )}
-                          {(post.postType === "project" ||
-                            post.type === "project") && (
-                            <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
-                              <Eye className="w-4 h-4" />
-                              <span>View Project</span>
-                            </button>
+                          {getProfileInitials(
+                            post.currUser?.name || post.author
                           )}
                         </div>
-                      </div>
 
-                      {/* Engagement Stats */}
-                      <div className="mt-4 pt-3 border-t border-gray-50">
-                        <div className="flex justify-between text-sm text-gray-500">
-                          <span>{post.likes || 0} likes</span>
-                          <div className="flex gap-4">
-                            <span>{post.comments || 0} comments</span>
-                            <span>{post.views || 0} views</span>
-                          </div>
+                        <div>
+                          <button
+                            onClick={() => handleProfileClick(post)}
+                            className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900 transition-colors"
+                          >
+                            {post.currUser?.name || post.author || "Anonymous"}
+                          </button>
+                          <p className="text-sm text-gray-500">
+                            {post.timeStamp
+                              ? new Date(
+                                  post.timeStamp.seconds * 1000
+                                ).toLocaleDateString()
+                              : post.time || "Recently"}
+                          </p>
                         </div>
                       </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
+                          post.postType || post.type
+                        )}`}
+                      >
+                        {getPostTypeLabel(post.postType || post.type)}
+                      </span>
                     </div>
-                  ))
-                )}
+
+                    {/* Post Content */}
+                    <div className="mb-4">
+                      <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
+                        {post.title || post.status}
+                      </h2>
+                      <p className="text-gray-600 leading-relaxed">
+                        {post.description || post.excerpt || post.status}
+                      </p>
+                    </div>
+
+                    {/* Tags */}
+                    {post.tags && post.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {post.tags.map((tag, tagIndex) => (
+                          <span
+                            key={tagIndex}
+                            className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* File Preview */}
+                    {post.fileURL && (
+                      <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            {post.fileType === "pdf" ? "📄" : "📎"}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">
+                              {post.fileName || "Attached file"}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {post.fileType
+                                ? post.fileType.toUpperCase()
+                                : "File"}{" "}
+                              • Click to view
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => window.open(post.fileURL, "_blank")}
+                            className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Post Actions */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
+                      <div className="flex space-x-4">
+                        <button
+                          onClick={() => handleLike(post.id)}
+                          disabled={likingStates[post.id]}
+                          className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                            isPostLikedByCurrentUser(post)
+                              ? "bg-red-500 text-white shadow-lg"
+                              : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                          } ${
+                            likingStates[post.id]
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
+                        >
+                          {likingStates[post.id] ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Heart
+                              className={`w-4 h-4 ${
+                                isPostLikedByCurrentUser(post)
+                                  ? "fill-current"
+                                  : ""
+                              }`}
+                            />
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLikesClick(post.id, post.likes || 0);
+                            }}
+                            className="hover:underline"
+                            disabled={likingStates[post.id]}
+                          >
+                            Like ({post.likes || 0})
+                          </button>
+                        </button>
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Comment ({post.comments || 0})</span>
+                        </button>
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
+                          <Share2 className="w-4 h-4" />
+                          <span>Share</span>
+                        </button>
+                      </div>
+                      {(post.postType === "research-paper" ||
+                        post.type === "research-paper") &&
+                        post.fileURL && (
+                          <button
+                            onClick={() => window.open(post.fileURL, "_blank")}
+                            className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Download PDF</span>
+                          </button>
+                        )}
+                      {(post.postType === "project" ||
+                        post.type === "project") && (
+                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
+                          <Eye className="w-4 h-4" />
+                          <span>View Project</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Engagement Info */}
+                    {post.likedBy && post.likedBy.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-50">
+                        <button
+                          onClick={() =>
+                            handleLikesClick(post.id, post.likes || 0)
+                          }
+                          className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors"
+                        >
+                          {post.likedBy.length === 1
+                            ? `Liked by ${
+                                post.likedBy[0].name ||
+                                post.likedBy[0].email?.split("@")[0] ||
+                                "someone"
+                              }`
+                            : post.likedBy.length === 2
+                            ? `Liked by ${
+                                post.likedBy[0].name ||
+                                post.likedBy[0].email?.split("@")[0] ||
+                                "someone"
+                              } and ${
+                                post.likedBy[1].name ||
+                                post.likedBy[1].email?.split("@")[0] ||
+                                "1 other"
+                              }`
+                            : `Liked by ${
+                                post.likedBy[0].name ||
+                                post.likedBy[0].email?.split("@")[0] ||
+                                "someone"
+                              } and ${post.likedBy.length - 1} others`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

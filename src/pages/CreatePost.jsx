@@ -149,6 +149,8 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
         ...currUser, // Include any passed user data
       };
 
+      // In the sendStatus function within CreatePost.jsx, update the postData object:
+
       const postData = {
         postId: Date.now() + Math.random().toString(36).substring(2, 15),
         title: title.trim(),
@@ -165,6 +167,7 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
         authorEmail: userEmail,
         authorId: user.uid,
         likes: 0,
+        likedBy: [], // Initialize empty array for tracking who liked the post
         comments: 0,
         views: 0,
         liked: false,
@@ -177,7 +180,6 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-
       console.log("Creating post with data:", postData);
 
       await FireStore(postData);

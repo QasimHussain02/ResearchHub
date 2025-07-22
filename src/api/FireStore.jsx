@@ -13,7 +13,6 @@ import {
   getDocs,
   arrayUnion,
   arrayRemove,
-  increment,
 } from "firebase/firestore";
 
 let docRef = collection(db, "posts");
@@ -38,6 +37,92 @@ export const getStatus = (setPosts) => {
       })
     );
   });
+};
+
+// Enhanced like/unlike functionality with user tracking
+export const toggleLike = async (postId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to like posts");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const likedBy = postData.likedBy || [];
+    const isLiked = likedBy.some((like) => like.uid === currentUser.uid);
+
+    if (isLiked) {
+      // Unlike the post - remove the user's like object
+      const updatedLikedBy = likedBy.filter(
+        (like) => like.uid !== currentUser.uid
+      );
+      await updateDoc(postRef, {
+        likedBy: updatedLikedBy,
+        likes: Math.max(0, (postData.likes || 0) - 1),
+      });
+    } else {
+      // Like the post - get fresh user data and add like
+      const userData = await getUserDataByUID(currentUser.uid);
+
+      // Create comprehensive like object with fallbacks
+      const userName =
+        userData?.name ||
+        currentUser.displayName ||
+        currentUser.email?.split("@")[0] ||
+        "User";
+
+      const likeObject = {
+        uid: currentUser.uid,
+        name: userName,
+        email: currentUser.email || "No email",
+        timestamp: new Date(),
+        // Add additional user info if available
+        userPhoto: userData?.photoURL || currentUser.photoURL,
+        userBio: userData?.bio || "",
+      };
+
+      console.log("Creating like object:", likeObject); // Debug log
+
+      await updateDoc(postRef, {
+        likedBy: arrayUnion(likeObject),
+        likes: (postData.likes || 0) + 1,
+      });
+    }
+
+    return { success: true, isLiked: !isLiked };
+  } catch (error) {
+    console.error("Error toggling like:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to get users who liked a specific post
+export const getPostLikes = async (postId) => {
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const likedBy = postData.likedBy || [];
+
+    return { success: true, likedBy };
+  } catch (error) {
+    console.error("Error getting post likes:", error);
+    return { success: false, error: error.message };
+  }
 };
 
 // Enhanced postUserData function to ensure user document exists
@@ -67,7 +152,6 @@ export const postUserData = async (userData) => {
       followers: [],
       following: [],
       interests: [],
-      likedPosts: [], // Track liked posts
       createdAt: new Date(),
       updatedAt: new Date(),
       ...userData, // Override with provided data
@@ -105,7 +189,6 @@ export const ensureUserDocument = async () => {
         followers: [],
         following: [],
         interests: [],
-        likedPosts: [], // Track liked posts
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -386,149 +469,58 @@ export const updateUserNameInPosts = async (newName, userEmail) => {
   }
 };
 
-// LIKE SYSTEM FUNCTIONS
-
-// Function to toggle like on a post
-export const toggleLikePost = async (postId) => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    console.error("No authenticated user found.");
-    return { success: false, error: "User not authenticated" };
-  }
-
+// Add this function to your FireStore.jsx for debugging
+export const debugPostLikes = async (postId) => {
   try {
-    const postRef = doc(docRef, postId);
-    const userDocRef = doc(userRef, currentUser.uid);
-
-    // Get current post and user data
-    const [postSnap, userSnap] = await Promise.all([
-      getDoc(postRef),
-      getDoc(userDocRef),
-    ]);
-
-    if (!postSnap.exists()) {
-      console.error("Post not found");
-      return { success: false, error: "Post not found" };
-    }
-
-    if (!userSnap.exists()) {
-      console.error("User document not found");
-      return { success: false, error: "User document not found" };
-    }
-
-    const postData = postSnap.data();
-    const userData = userSnap.data();
-
-    const likedBy = postData.likedBy || [];
-    const userLikedPosts = userData.likedPosts || [];
-    const currentLikes = postData.likes || 0;
-
-    const hasLiked = likedBy.includes(currentUser.uid);
-
-    if (hasLiked) {
-      // Unlike the post
-      await Promise.all([
-        updateDoc(postRef, {
-          likedBy: arrayRemove(currentUser.uid),
-          likes: Math.max(0, currentLikes - 1), // Ensure likes don't go negative
-        }),
-        updateDoc(userDocRef, {
-          likedPosts: arrayRemove(postId),
-        }),
-      ]);
-
-      console.log("Post unliked successfully");
-      return {
-        success: true,
-        liked: false,
-        newLikeCount: Math.max(0, currentLikes - 1),
-      };
-    } else {
-      // Like the post
-      await Promise.all([
-        updateDoc(postRef, {
-          likedBy: arrayUnion(currentUser.uid),
-          likes: currentLikes + 1,
-        }),
-        updateDoc(userDocRef, {
-          likedPosts: arrayUnion(postId),
-        }),
-      ]);
-
-      console.log("Post liked successfully");
-      return {
-        success: true,
-        liked: true,
-        newLikeCount: currentLikes + 1,
-      };
-    }
-  } catch (error) {
-    console.error("Error toggling like:", error);
-    return { success: false, error: error.message };
-  }
-};
-
-// Function to check if user has liked a post
-export const checkIfUserLikedPost = async (postId, userId = null) => {
-  try {
-    const uid = userId || auth.currentUser?.uid;
-    if (!uid) return false;
-
     const postRef = doc(docRef, postId);
     const postSnap = await getDoc(postRef);
 
-    if (!postSnap.exists()) return false;
+    if (postSnap.exists()) {
+      const postData = postSnap.data();
+      console.log("=== DEBUG: Post Likes Data ===");
+      console.log("Post ID:", postId);
+      console.log("Total Likes:", postData.likes);
+      console.log("Liked By Array:", postData.likedBy);
 
-    const postData = postSnap.data();
-    const likedBy = postData.likedBy || [];
-
-    return likedBy.includes(uid);
-  } catch (error) {
-    console.error("Error checking if user liked post:", error);
-    return false;
-  }
-};
-
-// Function to get posts with like status for current user
-export const getPostsWithLikeStatus = (setPosts) => {
-  const currentUser = auth.currentUser;
-
-  const unsubscribe = onSnapshot(docRef, (data) => {
-    const posts = data.docs.map((doc) => {
-      const postData = { ...doc.data(), id: doc.id };
-
-      // Add liked status for current user
-      if (currentUser) {
-        const likedBy = postData.likedBy || [];
-        postData.liked = likedBy.includes(currentUser.uid);
-      } else {
-        postData.liked = false;
+      if (postData.likedBy && postData.likedBy.length > 0) {
+        postData.likedBy.forEach((like, index) => {
+          console.log(`Like ${index + 1}:`, {
+            uid: like.uid,
+            name: like.name,
+            email: like.email,
+            timestamp: like.timestamp,
+          });
+        });
       }
+      console.log("=== END DEBUG ===");
 
-      return postData;
-    });
-
-    setPosts(posts);
-  });
-
-  return unsubscribe;
-};
-
-// Function to get user's liked posts
-export const getUserLikedPosts = async (userId = null) => {
-  try {
-    const uid = userId || auth.currentUser?.uid;
-    if (!uid) return [];
-
-    const userDocRef = doc(userRef, uid);
-    const userSnap = await getDoc(userDocRef);
-
-    if (!userSnap.exists()) return [];
-
-    const userData = userSnap.data();
-    return userData.likedPosts || [];
+      return postData.likedBy || [];
+    } else {
+      console.log("Post not found for debugging");
+      return [];
+    }
   } catch (error) {
-    console.error("Error getting user liked posts:", error);
+    console.error("Error debugging post likes:", error);
     return [];
   }
+};
+
+// Function to check current user data
+export const debugCurrentUser = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.log("No current user authenticated");
+    return;
+  }
+
+  console.log("=== DEBUG: Current User ===");
+  console.log("Auth User:", {
+    uid: currentUser.uid,
+    email: currentUser.email,
+    displayName: currentUser.displayName,
+  });
+
+  const userData = await getUserDataByUID(currentUser.uid);
+  console.log("Firestore User Data:", userData);
+  console.log("=== END DEBUG ===");
 };

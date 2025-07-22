@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { getPostsWithLikeStatus, toggleLikePost } from "../api/FireStore";
+import { getStatus, toggleLike } from "../api/FireStore";
+import { auth } from "../firebaseConfig";
 import {
   Heart,
   MessageCircle,
@@ -9,18 +10,22 @@ import {
   Loader2,
 } from "lucide-react";
 import { ProfileAvatar, ProfileLink } from "../helper/ProfileNavigation";
-import { auth } from "../firebaseConfig";
+import LikesModal from "./LikesModal";
 
 export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userPosts, setUserPosts] = useState([]);
-  const [likingPosts, setLikingPosts] = useState(new Set()); // Track which posts are being liked
+  const [likesModal, setLikesModal] = useState({
+    isOpen: false,
+    postId: null,
+    totalLikes: 0,
+  });
+  const [likingStates, setLikingStates] = useState({});
 
   useEffect(() => {
     setLoading(true);
-    const unsubscribe = getPostsWithLikeStatus(setPosts);
-    return () => unsubscribe && unsubscribe();
+    getStatus(setPosts);
   }, []);
 
   useEffect(() => {
@@ -77,62 +82,45 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       return;
     }
 
-    // Prevent multiple like requests for the same post
-    if (likingPosts.has(postId)) return;
+    // Prevent multiple simultaneous like requests for the same post
+    if (likingStates[postId]) return;
 
-    // Add to liking posts set
-    setLikingPosts((prev) => new Set(prev).add(postId));
+    setLikingStates((prev) => ({ ...prev, [postId]: true }));
 
     try {
-      const result = await toggleLikePost(postId);
+      const result = await toggleLike(postId);
 
       if (result.success) {
-        // Update the local state immediately for better UX
-        setUserPosts((prevPosts) =>
-          prevPosts.map((post) =>
-            post.id === postId
-              ? {
-                  ...post,
-                  liked: result.liked,
-                  likes: result.newLikeCount,
-                }
-              : post
-          )
-        );
-
-        // Also update the main posts array
-        setPosts((prevPosts) =>
-          prevPosts.map((post) =>
-            post.id === postId
-              ? {
-                  ...post,
-                  liked: result.liked,
-                  likes: result.newLikeCount,
-                }
-              : post
-          )
-        );
+        // The posts will be updated automatically through the real-time listener
+        console.log("Like toggled successfully");
       } else {
         console.error("Failed to toggle like:", result.error);
+        alert("Failed to update like. Please try again.");
       }
     } catch (error) {
       console.error("Error toggling like:", error);
+      alert("An error occurred. Please try again.");
     } finally {
-      // Remove from liking posts set
-      setLikingPosts((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(postId);
-        return newSet;
-      });
+      setLikingStates((prev) => ({ ...prev, [postId]: false }));
     }
+  };
+
+  const handleLikesClick = (postId, totalLikes) => {
+    if (totalLikes > 0) {
+      setLikesModal({ isOpen: true, postId, totalLikes });
+    }
+  };
+
+  const closeLikesModal = () => {
+    setLikesModal({ isOpen: false, postId: null, totalLikes: 0 });
   };
 
   const handleShare = (post) => {
     // Basic share functionality
     if (navigator.share) {
       navigator.share({
-        title: post.title || post.status,
-        text: post.description || post.excerpt || post.status,
+        title: post.title,
+        text: post.excerpt,
         url: window.location.href,
       });
     } else {
@@ -140,6 +128,12 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       navigator.clipboard.writeText(window.location.href);
       alert("Link copied to clipboard!");
     }
+  };
+
+  // Check if current user liked a post
+  const isPostLikedByCurrentUser = (post) => {
+    if (!auth.currentUser || !post.likedBy) return false;
+    return post.likedBy.some((like) => like.uid === auth.currentUser.uid);
   };
 
   if (loading) {
@@ -161,6 +155,14 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       <div className="text-3xl font-bold mb-8 text-center lg:text-left">
         {isOwnProfile ? "My Posts" : `${currentUser?.name || "User"}'s Posts`}
       </div>
+
+      {/* Likes Modal */}
+      <LikesModal
+        isOpen={likesModal.isOpen}
+        onClose={closeLikesModal}
+        postId={likesModal.postId}
+        totalLikes={likesModal.totalLikes}
+      />
 
       <div className="space-y-6">
         {userPosts.length === 0 ? (
@@ -277,27 +279,36 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                 <div className="flex flex-wrap gap-2 sm:gap-4">
                   <button
                     onClick={() => handleLike(post.id)}
-                    disabled={likingPosts.has(post.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 disabled:opacity-70 ${
-                      post.liked
+                    disabled={likingStates[post.id]}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                      isPostLikedByCurrentUser(post)
                         ? "bg-red-500 text-white shadow-lg"
                         : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                    } ${
+                      likingStates[post.id]
+                        ? "opacity-50 cursor-not-allowed"
+                        : ""
                     }`}
                   >
-                    {likingPosts.has(post.id) ? (
+                    {likingStates[post.id] ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Heart
                         className={`w-4 h-4 ${
-                          post.liked ? "fill-current" : ""
+                          isPostLikedByCurrentUser(post) ? "fill-current" : ""
                         }`}
                       />
                     )}
-                    <span>
-                      {likingPosts.has(post.id)
-                        ? "Loading..."
-                        : `Like (${post.likes || 0})`}
-                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLikesClick(post.id, post.likes || 0);
+                      }}
+                      className="hover:underline"
+                      disabled={likingStates[post.id]}
+                    >
+                      Like ({post.likes || 0})
+                    </button>
                   </button>
 
                   <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
@@ -337,10 +348,47 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                 </div>
               </div>
 
+              {/* Engagement Info */}
+              {post.likedBy && post.likedBy.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-50">
+                  <button
+                    onClick={() => handleLikesClick(post.id, post.likes || 0)}
+                    className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors"
+                  >
+                    {post.likedBy.length === 1
+                      ? `Liked by ${
+                          post.likedBy[0].name ||
+                          post.likedBy[0].email?.split("@")[0] ||
+                          "1 person"
+                        }`
+                      : post.likedBy.length === 2
+                      ? `Liked by ${
+                          post.likedBy[0].name ||
+                          post.likedBy[0].email?.split("@")[0] ||
+                          "someone"
+                        } and ${
+                          post.likedBy[1].name ||
+                          post.likedBy[1].email?.split("@")[0] ||
+                          "1 other"
+                        }`
+                      : `Liked by ${
+                          post.likedBy[0].name ||
+                          post.likedBy[0].email?.split("@")[0] ||
+                          "someone"
+                        } and ${post.likedBy.length - 1} others`}
+                  </button>
+                </div>
+              )}
+
               {/* Engagement Stats */}
               <div className="mt-4 pt-3 border-t border-gray-50">
                 <div className="flex justify-between text-sm text-gray-500">
-                  <span>{post.likes || 0} likes</span>
+                  <button
+                    onClick={() => handleLikesClick(post.id, post.likes || 0)}
+                    className="hover:underline"
+                  >
+                    {post.likes || 0} likes
+                  </button>
                   <div className="flex gap-4">
                     <span>{post.comments || 0} comments</span>
                     <span>{post.views || 0} views</span>
