@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getStatus } from "../api/FireStore";
+import { getPostsWithLikeStatus, toggleLikePost } from "../api/FireStore";
 import {
   Heart,
   MessageCircle,
@@ -9,15 +9,18 @@ import {
   Loader2,
 } from "lucide-react";
 import { ProfileAvatar, ProfileLink } from "../helper/ProfileNavigation";
+import { auth } from "../firebaseConfig";
 
 export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userPosts, setUserPosts] = useState([]);
+  const [likingPosts, setLikingPosts] = useState(new Set()); // Track which posts are being liked
 
   useEffect(() => {
     setLoading(true);
-    getStatus(setPosts);
+    const unsubscribe = getPostsWithLikeStatus(setPosts);
+    return () => unsubscribe && unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -68,39 +71,68 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     }
   };
 
-  const handleLike = (postId) => {
-    setUserPosts((prevPosts) =>
-      prevPosts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              liked: !post.liked,
-              likes: post.liked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
-    );
+  const handleLike = async (postId) => {
+    if (!auth.currentUser) {
+      alert("Please log in to like posts");
+      return;
+    }
 
-    // Also update the main posts array
-    setPosts((prevPosts) =>
-      prevPosts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              liked: !post.liked,
-              likes: post.liked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
-    );
+    // Prevent multiple like requests for the same post
+    if (likingPosts.has(postId)) return;
+
+    // Add to liking posts set
+    setLikingPosts((prev) => new Set(prev).add(postId));
+
+    try {
+      const result = await toggleLikePost(postId);
+
+      if (result.success) {
+        // Update the local state immediately for better UX
+        setUserPosts((prevPosts) =>
+          prevPosts.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  liked: result.liked,
+                  likes: result.newLikeCount,
+                }
+              : post
+          )
+        );
+
+        // Also update the main posts array
+        setPosts((prevPosts) =>
+          prevPosts.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  liked: result.liked,
+                  likes: result.newLikeCount,
+                }
+              : post
+          )
+        );
+      } else {
+        console.error("Failed to toggle like:", result.error);
+      }
+    } catch (error) {
+      console.error("Error toggling like:", error);
+    } finally {
+      // Remove from liking posts set
+      setLikingPosts((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    }
   };
 
   const handleShare = (post) => {
     // Basic share functionality
     if (navigator.share) {
       navigator.share({
-        title: post.title,
-        text: post.excerpt,
+        title: post.title || post.status,
+        text: post.description || post.excerpt || post.status,
         url: window.location.href,
       });
     } else {
@@ -245,16 +277,27 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                 <div className="flex flex-wrap gap-2 sm:gap-4">
                   <button
                     onClick={() => handleLike(post.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                    disabled={likingPosts.has(post.id)}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 disabled:opacity-70 ${
                       post.liked
                         ? "bg-red-500 text-white shadow-lg"
                         : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
                     }`}
                   >
-                    <Heart
-                      className={`w-4 h-4 ${post.liked ? "fill-current" : ""}`}
-                    />
-                    <span>Like ({post.likes || 0})</span>
+                    {likingPosts.has(post.id) ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Heart
+                        className={`w-4 h-4 ${
+                          post.liked ? "fill-current" : ""
+                        }`}
+                      />
+                    )}
+                    <span>
+                      {likingPosts.has(post.id)
+                        ? "Loading..."
+                        : `Like (${post.likes || 0})`}
+                    </span>
                   </button>
 
                   <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">

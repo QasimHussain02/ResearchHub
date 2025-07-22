@@ -8,6 +8,10 @@ import {
   X,
   UserPlus,
   UserCheck,
+  MapPin,
+  Building,
+  Globe,
+  Mail,
 } from "lucide-react";
 import { auth } from "../firebaseConfig";
 
@@ -55,10 +59,24 @@ export default function UserProfileCard({ onEdit, currentUser, isOwnProfile }) {
   };
 
   const stats = [
-    { icon: FileText, label: "Papers", value: "24" },
-    { icon: Users, label: "Followers", value: "1.2K" },
-    { icon: MessageCircle, label: "Discussions", value: "89" },
+    { icon: FileText, label: "Papers", value: currentUser?.papers || "0" },
+    {
+      icon: Users,
+      label: "Followers",
+      value: currentUser?.followers?.length || "0",
+    },
+    {
+      icon: MessageCircle,
+      label: "Discussions",
+      value: currentUser?.discussions || "0",
+    },
   ];
+
+  // Helper function to format website URL for display
+  const formatWebsiteUrl = (url) => {
+    if (!url) return null;
+    return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  };
 
   return (
     <div className="w-full min-h-screen bg-gray-50">
@@ -129,19 +147,89 @@ export default function UserProfileCard({ onEdit, currentUser, isOwnProfile }) {
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
                 {currentUser?.name || "User Name"}
               </h1>
-              <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-3 sm:mb-4">
-                {currentUser?.headline || "Professional Title"}
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6">
-                <p className="text-sm sm:text-base md:text-lg text-gray-700 text-center lg:text-left">
-                  {currentUser?.bio || "User bio"}
+
+              {/* Professional Title */}
+              {currentUser?.headline && (
+                <p className="text-base sm:text-lg md:text-xl text-blue-600 font-semibold mb-3 sm:mb-4">
+                  {currentUser.headline}
                 </p>
-                {isOwnProfile && (
-                  <button onClick={onEdit}>
-                    <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
-                  </button>
+              )}
+
+              {/* Location, Institution, Email info */}
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-6 mb-4 sm:mb-6">
+                {currentUser?.institution && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Building className="w-4 h-4" />
+                    <span className="text-sm sm:text-base">
+                      {currentUser.institution}
+                    </span>
+                  </div>
+                )}
+
+                {currentUser?.location && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <MapPin className="w-4 h-4" />
+                    <span className="text-sm sm:text-base">
+                      {currentUser.location}
+                    </span>
+                  </div>
+                )}
+
+                {currentUser?.email && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Mail className="w-4 h-4" />
+                    <span className="text-sm sm:text-base">
+                      {currentUser.email}
+                    </span>
+                  </div>
                 )}
               </div>
+
+              {/* Website */}
+              {currentUser?.website && (
+                <div className="flex items-center justify-center lg:justify-start gap-2 mb-4 sm:mb-6">
+                  <Globe className="w-4 h-4 text-blue-600" />
+                  <a
+                    href={
+                      currentUser.website.startsWith("http")
+                        ? currentUser.website
+                        : `https://${currentUser.website}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline text-sm sm:text-base transition-colors"
+                  >
+                    {formatWebsiteUrl(currentUser.website)}
+                  </a>
+                </div>
+              )}
+
+              {/* Bio */}
+              {currentUser?.bio && (
+                <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6">
+                  <p className="text-sm sm:text-base md:text-lg text-gray-700 text-center lg:text-left">
+                    {currentUser.bio}
+                  </p>
+                  {/* {isOwnProfile && (
+                    <button onClick={onEdit}>
+                      <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
+                    </button>
+                  )} */}
+                </div>
+              )}
+
+              {/* Edit button if no bio */}
+              {!currentUser?.bio && isOwnProfile && (
+                <div className="flex items-center justify-center lg:justify-start mb-4 sm:mb-6">
+                  <button
+                    onClick={onEdit}
+                    className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    <Edit3 className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <span className="text-sm">Add bio and more info</span>
+                  </button>
+                </div>
+              )}
 
               {/* Mobile Stats - Horizontal (after name) */}
               <div className="lg:hidden bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 w-full mb-4 sm:mb-6">
@@ -205,15 +293,74 @@ export default function UserProfileCard({ onEdit, currentUser, isOwnProfile }) {
               </div>
             </div>
 
-            {/* Bio Section */}
-            <div className="mb-6 sm:mb-8">
-              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
-                About
-              </h3>
-              <p className="text-gray-700 text-sm sm:text-base md:text-lg leading-relaxed">
-                {currentUser?.about || "No information provided yet."}
-              </p>
-            </div>
+            {/* About Section */}
+            {currentUser?.about && (
+              <div className="mb-6 sm:mb-8">
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
+                  About
+                </h3>
+                <p className="text-gray-700 text-sm sm:text-base md:text-lg leading-relaxed">
+                  {currentUser.about}
+                </p>
+              </div>
+            )}
+
+            {/* Professional Information Card */}
+            {(currentUser?.institution ||
+              currentUser?.location ||
+              currentUser?.website) && (
+              <div className="mb-6 sm:mb-8 bg-gray-50 rounded-xl p-4 sm:p-6">
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
+                  Professional Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {currentUser?.institution && (
+                    <div className="flex items-start gap-3">
+                      <Building className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm text-gray-600">Institution</p>
+                        <p className="text-base font-medium text-gray-900">
+                          {currentUser.institution}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentUser?.location && (
+                    <div className="flex items-start gap-3">
+                      <MapPin className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm text-gray-600">Location</p>
+                        <p className="text-base font-medium text-gray-900">
+                          {currentUser.location}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentUser?.website && (
+                    <div className="flex items-start gap-3 sm:col-span-2">
+                      <Globe className="w-5 h-5 text-purple-600 mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm text-gray-600">Website</p>
+                        <a
+                          href={
+                            currentUser.website.startsWith("http")
+                              ? currentUser.website
+                              : `https://${currentUser.website}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-base font-medium text-blue-600 hover:text-blue-800 underline transition-colors"
+                        >
+                          {formatWebsiteUrl(currentUser.website)}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Research Interests */}
             <div className="mb-6 sm:mb-8">

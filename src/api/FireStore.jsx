@@ -11,6 +11,9 @@ import {
   query,
   where,
   getDocs,
+  arrayUnion,
+  arrayRemove,
+  increment,
 } from "firebase/firestore";
 
 let docRef = collection(db, "posts");
@@ -64,6 +67,7 @@ export const postUserData = async (userData) => {
       followers: [],
       following: [],
       interests: [],
+      likedPosts: [], // Track liked posts
       createdAt: new Date(),
       updatedAt: new Date(),
       ...userData, // Override with provided data
@@ -101,6 +105,7 @@ export const ensureUserDocument = async () => {
         followers: [],
         following: [],
         interests: [],
+        likedPosts: [], // Track liked posts
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -378,5 +383,152 @@ export const updateUserNameInPosts = async (newName, userEmail) => {
     console.log(`Updated ${updatePromises.length} posts with new user name`);
   } catch (error) {
     console.error("Error updating user name in posts:", error);
+  }
+};
+
+// LIKE SYSTEM FUNCTIONS
+
+// Function to toggle like on a post
+export const toggleLikePost = async (postId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("No authenticated user found.");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const userDocRef = doc(userRef, currentUser.uid);
+
+    // Get current post and user data
+    const [postSnap, userSnap] = await Promise.all([
+      getDoc(postRef),
+      getDoc(userDocRef),
+    ]);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    if (!userSnap.exists()) {
+      console.error("User document not found");
+      return { success: false, error: "User document not found" };
+    }
+
+    const postData = postSnap.data();
+    const userData = userSnap.data();
+
+    const likedBy = postData.likedBy || [];
+    const userLikedPosts = userData.likedPosts || [];
+    const currentLikes = postData.likes || 0;
+
+    const hasLiked = likedBy.includes(currentUser.uid);
+
+    if (hasLiked) {
+      // Unlike the post
+      await Promise.all([
+        updateDoc(postRef, {
+          likedBy: arrayRemove(currentUser.uid),
+          likes: Math.max(0, currentLikes - 1), // Ensure likes don't go negative
+        }),
+        updateDoc(userDocRef, {
+          likedPosts: arrayRemove(postId),
+        }),
+      ]);
+
+      console.log("Post unliked successfully");
+      return {
+        success: true,
+        liked: false,
+        newLikeCount: Math.max(0, currentLikes - 1),
+      };
+    } else {
+      // Like the post
+      await Promise.all([
+        updateDoc(postRef, {
+          likedBy: arrayUnion(currentUser.uid),
+          likes: currentLikes + 1,
+        }),
+        updateDoc(userDocRef, {
+          likedPosts: arrayUnion(postId),
+        }),
+      ]);
+
+      console.log("Post liked successfully");
+      return {
+        success: true,
+        liked: true,
+        newLikeCount: currentLikes + 1,
+      };
+    }
+  } catch (error) {
+    console.error("Error toggling like:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to check if user has liked a post
+export const checkIfUserLikedPost = async (postId, userId = null) => {
+  try {
+    const uid = userId || auth.currentUser?.uid;
+    if (!uid) return false;
+
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) return false;
+
+    const postData = postSnap.data();
+    const likedBy = postData.likedBy || [];
+
+    return likedBy.includes(uid);
+  } catch (error) {
+    console.error("Error checking if user liked post:", error);
+    return false;
+  }
+};
+
+// Function to get posts with like status for current user
+export const getPostsWithLikeStatus = (setPosts) => {
+  const currentUser = auth.currentUser;
+
+  const unsubscribe = onSnapshot(docRef, (data) => {
+    const posts = data.docs.map((doc) => {
+      const postData = { ...doc.data(), id: doc.id };
+
+      // Add liked status for current user
+      if (currentUser) {
+        const likedBy = postData.likedBy || [];
+        postData.liked = likedBy.includes(currentUser.uid);
+      } else {
+        postData.liked = false;
+      }
+
+      return postData;
+    });
+
+    setPosts(posts);
+  });
+
+  return unsubscribe;
+};
+
+// Function to get user's liked posts
+export const getUserLikedPosts = async (userId = null) => {
+  try {
+    const uid = userId || auth.currentUser?.uid;
+    if (!uid) return [];
+
+    const userDocRef = doc(userRef, uid);
+    const userSnap = await getDoc(userDocRef);
+
+    if (!userSnap.exists()) return [];
+
+    const userData = userSnap.data();
+    return userData.likedPosts || [];
+  } catch (error) {
+    console.error("Error getting user liked posts:", error);
+    return [];
   }
 };
