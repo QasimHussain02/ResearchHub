@@ -170,42 +170,75 @@ const People = () => {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">People</h1>
-          <p className="text-gray-600">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">
+            People
+          </h1>
+          <p className="text-sm sm:text-base text-gray-600">
             Manage your follow requests, followers, and connections
           </p>
         </div>
 
         {/* Search Bar */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
+              <Search className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
             </div>
             <input
               type="text"
               placeholder="Search people..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all duration-200 bg-white"
+              className="w-full pl-9 sm:pl-10 pr-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all duration-200 bg-white text-sm sm:text-base"
             />
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-6">
+        {/* Tabs - Mobile Optimized */}
+        <div className="mb-4 sm:mb-6">
           <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
+            {/* Desktop/Tablet Tabs */}
+            <nav className="hidden sm:flex -mb-px space-x-4 lg:space-x-8">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-all duration-200 ${
+                    className={`py-3 sm:py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-all duration-200 ${
+                      activeTab === tab.id
+                        ? "border-blue-500 text-blue-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{tab.label}</span>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs ${
+                        activeTab === tab.id
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Mobile Tabs - Scrollable */}
+            <nav className="sm:hidden -mb-px flex space-x-6 overflow-x-auto pb-2">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-all duration-200 whitespace-nowrap flex-shrink-0 ${
                       activeTab === tab.id
                         ? "border-blue-500 text-blue-600"
                         : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -230,14 +263,14 @@ const People = () => {
         </div>
 
         {/* Content */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {filteredData().length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <div className="text-center py-8 sm:py-12">
+              <Users className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1 sm:mb-2">
                 No {activeTab} found
               </h3>
-              <p className="text-gray-500">
+              <p className="text-sm sm:text-base text-gray-500">
                 {searchTerm
                   ? `No results for "${searchTerm}"`
                   : `You don't have any ${activeTab} yet`}
@@ -247,9 +280,104 @@ const People = () => {
             filteredData().map((person) => (
               <div
                 key={person.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200"
+                className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow duration-200"
               >
-                <div className="flex items-start justify-between">
+                {/* Mobile Layout - Stacked */}
+                <div className="sm:hidden">
+                  {/* User Info Section */}
+                  <div className="flex items-start space-x-3 mb-4">
+                    {/* Avatar */}
+                    <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                      {getInitials(person.name)}
+                    </div>
+
+                    {/* User Details */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-semibold text-gray-900 truncate">
+                        {person.name}
+                      </h3>
+                      <p className="text-sm text-gray-500 mb-1">
+                        @{person.username}
+                      </p>
+                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                        {person.bio}
+                      </p>
+
+                      {/* Additional Info */}
+                      <div className="flex flex-col space-y-1 text-xs text-gray-500">
+                        {activeTab === "requests" && (
+                          <>
+                            <span>
+                              {person.mutualFollowers} mutual followers
+                            </span>
+                            <span>{person.timestamp}</span>
+                          </>
+                        )}
+                        {(activeTab === "followers" ||
+                          activeTab === "following") && (
+                          <span>Followed in {person.followedDate}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons - Full Width on Mobile */}
+                  <div className="flex space-x-2">
+                    {activeTab === "requests" && (
+                      <>
+                        <button
+                          onClick={() => handleAcceptRequest(person.id)}
+                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          <span>Accept</span>
+                        </button>
+                        <button
+                          onClick={() => handleRejectRequest(person.id)}
+                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                        >
+                          <XCircle className="h-4 w-4" />
+                          <span>Decline</span>
+                        </button>
+                      </>
+                    )}
+
+                    {activeTab === "followers" && (
+                      <>
+                        {person.isFollowing ? (
+                          <button
+                            onClick={() => handleUnfollow(person.id)}
+                            className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                          >
+                            <UserX className="h-4 w-4" />
+                            <span>Unfollow</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleFollowBack(person.id)}
+                            className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            <span>Follow Back</span>
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {activeTab === "following" && (
+                      <button
+                        onClick={() => handleUnfollow(person.id)}
+                        className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                      >
+                        <UserX className="h-4 w-4" />
+                        <span>Unfollow</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Desktop/Tablet Layout - Side by Side */}
+                <div className="hidden sm:flex items-start justify-between">
                   <div className="flex items-start space-x-4">
                     {/* Avatar */}
                     <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
@@ -286,7 +414,7 @@ const People = () => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-2 flex-shrink-0">
                     {activeTab === "requests" && (
                       <>
                         <button
