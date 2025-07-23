@@ -4,6 +4,7 @@ import Signup from "../pages/Signup";
 import Home from "../pages/Home";
 import CreatePost from "../pages/CreatePost";
 import Profile from "../pages/Profile";
+import People from "../pages/People";
 
 export const router = createBrowserRouter([
   {
@@ -33,5 +34,9 @@ export const router = createBrowserRouter([
   {
     path: "/profile",
     element: <Profile />,
+  },
+  {
+    path: "/people",
+    element: <People />,
   },
 ]);

@@ -11,7 +11,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { onLogut } from "../api/AuthApi";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const Navbar = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -19,25 +19,53 @@ const Navbar = () => {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [isPopupOpenMobile, setIsPopupOpenMobile] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
   const togglePopup = () => {
     setIsPopupOpen(!isPopupOpen);
   };
+
   const togglePopupMobile = () => {
     setIsPopupOpenMobile(!isPopupOpenMobile);
   };
+
   const handleLogout = () => {
-    // Handle logout logic here
     console.log("Logging out...");
     onLogut();
     setIsPopupOpen(false);
   };
 
   const navigationItems = [
-    { icon: Home, label: "Home", active: true },
-    { icon: Users, label: "People", active: false },
-    { icon: MessageCircle, label: "Messages", active: false },
-    { icon: Bell, label: "Notifications", active: false },
+    {
+      icon: Home,
+      label: "Home",
+      path: "/home",
+      active: location.pathname === "/home",
+    },
+    {
+      icon: Users,
+      label: "People",
+      path: "/people",
+      active: location.pathname === "/people",
+    },
+    {
+      icon: MessageCircle,
+      label: "Messages",
+      path: "/messages",
+      active: location.pathname === "/messages",
+    },
+    {
+      icon: Bell,
+      label: "Notifications",
+      path: "/notifications",
+      active: location.pathname === "/notifications",
+    },
   ];
+
+  const handleNavigation = (path) => {
+    navigate(path);
+    setIsMobileMenuOpen(false); // Close mobile menu after navigation
+  };
 
   return (
     <nav className="bg-[#F4F4F4] shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -45,12 +73,7 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="cursor-pointer" onClick={() => navigate("/home")}>
-            {" "}
-            <img
-              className="h-6 sm:h-7"
-              src="/logo.jpeg"
-              alt="Research hub"
-            />{" "}
+            <img className="h-6 sm:h-7" src="/logo.jpeg" alt="Research hub" />
           </div>
 
           {/* Desktop Search Bar */}
@@ -72,6 +95,7 @@ const Navbar = () => {
             {navigationItems.map((item, index) => (
               <button
                 key={index}
+                onClick={() => handleNavigation(item.path)}
                 className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${
                   item.active
                     ? "bg-blue-100 text-blue-600"
@@ -93,6 +117,7 @@ const Navbar = () => {
               </div>
             </button>
           </div>
+
           {/* Popup Dropdown */}
           {isPopupOpen && (
             <>
@@ -104,6 +129,16 @@ const Navbar = () => {
 
               {/* Popup Menu */}
               <div className="absolute top-12 right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                <button
+                  onClick={() => {
+                    navigate("/my-profile");
+                    setIsPopupOpen(false);
+                  }}
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <User className="w-4 h-4 mr-3" />
+                  My Profile
+                </button>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -163,6 +198,7 @@ const Navbar = () => {
               {navigationItems.map((item, index) => (
                 <button
                   key={index}
+                  onClick={() => handleNavigation(item.path)}
                   className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 relative cursor-pointer ${
                     item.active
                       ? "bg-blue-100 text-blue-600"
@@ -189,11 +225,22 @@ const Navbar = () => {
                   {/* Backdrop */}
                   <div
                     className="fixed inset-0 z-10"
-                    onClick={() => setIsPopupOpen(false)}
+                    onClick={() => setIsPopupOpenMobile(false)}
                   />
 
                   {/* Popup Menu */}
                   <div className="absolute bottom-3 left-32 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                    <button
+                      onClick={() => {
+                        navigate("/my-profile");
+                        setIsPopupOpenMobile(false);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <User className="w-4 h-4 mr-3" />
+                      My Profile
+                    </button>
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
