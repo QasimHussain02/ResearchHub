@@ -46,6 +46,11 @@ const CommentPreview = ({ post, onViewAllComments }) => {
 
   const remainingComments = post.commentsList.length - recentComments.length;
 
+  // Count total interactions (comments + replies)
+  const totalInteractions = post.commentsList.reduce((total, comment) => {
+    return total + 1 + (comment.replies ? comment.replies.length : 0);
+  }, 0);
+
   return (
     <div className="mt-3 pt-3 border-t border-gray-50">
       {/* View all comments link */}
@@ -56,9 +61,13 @@ const CommentPreview = ({ post, onViewAllComments }) => {
         >
           <MessageCircle className="w-4 h-4" />
           <span>
-            {post.commentsList.length === 1
+            {totalInteractions === 1
               ? "View 1 comment"
-              : `View all ${post.commentsList.length} comments`}
+              : `View all ${totalInteractions} ${
+                  totalInteractions === post.commentsList.length
+                    ? "comments"
+                    : "comments & replies"
+                }`}
           </span>
         </button>
       )}
@@ -95,6 +104,16 @@ const CommentPreview = ({ post, onViewAllComments }) => {
                 <div className="ml-3 mt-1">
                   <span className="text-xs text-gray-400">
                     {comment.likes} {comment.likes === 1 ? "like" : "likes"}
+                  </span>
+                </div>
+              )}
+
+              {/* Show reply indicator if there are replies */}
+              {comment.replies && comment.replies.length > 0 && (
+                <div className="ml-3 mt-1">
+                  <span className="text-xs text-blue-500">
+                    {comment.replies.length}{" "}
+                    {comment.replies.length === 1 ? "reply" : "replies"}
                   </span>
                 </div>
               )}

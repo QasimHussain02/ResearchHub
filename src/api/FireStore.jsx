@@ -778,3 +778,377 @@ export const editComment = async (postId, commentId, newText) => {
     return { success: false, error: error.message };
   }
 };
+
+// Function to create a notification when someone replies to a comment
+export const createReplyNotification = async (
+  originalCommentAuthorUID,
+  postId,
+  postTitle,
+  replierName
+) => {
+  try {
+    // Don't notify if replying to own comment
+    if (originalCommentAuthorUID === auth.currentUser?.uid) {
+      return { success: true };
+    }
+
+    const notificationObject = {
+      id: Date.now() + Math.random().toString(36).substring(2, 15),
+      type: "reply",
+      message: `${replierName} replied to your comment`,
+      postId: postId,
+      postTitle: postTitle,
+      fromUID: auth.currentUser?.uid,
+      fromName: replierName,
+      toUID: originalCommentAuthorUID,
+      timestamp: new Date(),
+      read: false,
+    };
+
+    // Add notification to the user's notifications collection
+    const userNotificationsRef = collection(
+      db,
+      `users/${originalCommentAuthorUID}/notifications`
+    );
+    await addDoc(userNotificationsRef, notificationObject);
+
+    console.log("Reply notification created successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error creating reply notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to get user notifications
+export const getUserNotifications = async (userUID) => {
+  try {
+    if (!userUID) {
+      return { success: false, error: "User UID required" };
+    }
+
+    const notificationsRef = collection(db, `users/${userUID}/notifications`);
+    const q = query(notificationsRef, orderBy("timestamp", "desc"));
+    const querySnapshot = await getDocs(q);
+
+    const notifications = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return { success: true, notifications };
+  } catch (error) {
+    console.error("Error getting notifications:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to mark notification as read
+export const markNotificationAsRead = async (userUID, notificationId) => {
+  try {
+    const notificationRef = doc(
+      db,
+      `users/${userUID}/notifications/${notificationId}`
+    );
+    await updateDoc(notificationRef, {
+      read: true,
+      readAt: new Date(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Add these reply functions to your FireStore.jsx file
+
+// Function to add a reply to a comment
+export const addReply = async (postId, commentId, replyText) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to reply");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Find the original comment to get author info for notification
+    const originalComment = commentsList.find(
+      (comment) => comment.id === commentId
+    );
+    if (!originalComment) {
+      return { success: false, error: "Original comment not found" };
+    }
+
+    // Get fresh user data
+    const userData = await getUserDataByUID(currentUser.uid);
+
+    const userEmail = currentUser.email || userData?.email || "";
+    const userName =
+      userData?.name ||
+      currentUser.displayName ||
+      (userEmail ? userEmail.split("@")[0] : "") ||
+      "Anonymous User";
+
+    // Create reply object
+    const replyObject = {
+      id: Date.now() + Math.random().toString(36).substring(2, 15),
+      text: replyText.trim(),
+      uid: currentUser.uid,
+      author: userName,
+      email: userEmail,
+      timestamp: new Date(),
+      likes: 0,
+      likedBy: [],
+      userPhoto: userData?.photoURL || currentUser.photoURL || "",
+    };
+
+    // Find the comment and add reply to it
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId) {
+        const updatedReplies = [...(comment.replies || []), replyObject];
+        return {
+          ...comment,
+          replies: updatedReplies,
+        };
+      }
+      return comment;
+    });
+
+    // Update the post with modified comments
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    // Create notification for the original comment author
+    if (originalComment.uid !== currentUser.uid) {
+      try {
+        await createReplyNotification(
+          originalComment.uid,
+          postId,
+          postData.title || "a post",
+          userName
+        );
+      } catch (notificationError) {
+        console.warn("Failed to create reply notification:", notificationError);
+        // Don't fail the reply if notification fails
+      }
+    }
+
+    console.log("Reply added successfully:", replyObject);
+    return { success: true, reply: replyObject };
+  } catch (error) {
+    console.error("Error adding reply:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to like/unlike a reply
+export const toggleReplyLike = async (postId, commentId, replyId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to like replies");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Find the comment and update the specific reply
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId) {
+        const updatedReplies = (comment.replies || []).map((reply) => {
+          if (reply.id === replyId) {
+            const likedBy = reply.likedBy || [];
+            const isLiked = likedBy.some(
+              (like) => like.uid === currentUser.uid
+            );
+
+            if (isLiked) {
+              // Unlike the reply
+              return {
+                ...reply,
+                likes: Math.max(0, (reply.likes || 0) - 1),
+                likedBy: likedBy.filter((like) => like.uid !== currentUser.uid),
+              };
+            } else {
+              // Like the reply
+              const likeObject = {
+                uid: currentUser.uid,
+                timestamp: new Date(),
+              };
+              return {
+                ...reply,
+                likes: (reply.likes || 0) + 1,
+                likedBy: [...likedBy, likeObject],
+              };
+            }
+          }
+          return reply;
+        });
+
+        return {
+          ...comment,
+          replies: updatedReplies,
+        };
+      }
+      return comment;
+    });
+
+    // Update the post with modified comments
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error toggling reply like:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to delete a reply (only by reply author or post author)
+export const deleteReply = async (postId, commentId, replyId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to delete replies");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Find the reply to check permissions
+    let replyToDelete = null;
+    const commentWithReply = commentsList.find((comment) => {
+      if (comment.id === commentId && comment.replies) {
+        replyToDelete = comment.replies.find((reply) => reply.id === replyId);
+        return !!replyToDelete;
+      }
+      return false;
+    });
+
+    if (!replyToDelete) {
+      return { success: false, error: "Reply not found" };
+    }
+
+    // Check if user can delete (reply author or post author)
+    const canDelete =
+      replyToDelete.uid === currentUser.uid ||
+      postData.currUser?.uid === currentUser.uid ||
+      postData.authorId === currentUser.uid;
+
+    if (!canDelete) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this reply",
+      };
+    }
+
+    // Remove the reply from the comment
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId) {
+        const updatedReplies = (comment.replies || []).filter(
+          (reply) => reply.id !== replyId
+        );
+        return {
+          ...comment,
+          replies: updatedReplies,
+        };
+      }
+      return comment;
+    });
+
+    // Update the post
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    console.log("Reply deleted successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting reply:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to edit a reply (only by reply author)
+export const editReply = async (postId, commentId, replyId, newText) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to edit replies");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Update the specific reply
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId) {
+        const updatedReplies = (comment.replies || []).map((reply) => {
+          if (reply.id === replyId && reply.uid === currentUser.uid) {
+            return {
+              ...reply,
+              text: newText.trim(),
+              editedAt: new Date(),
+            };
+          }
+          return reply;
+        });
+
+        return {
+          ...comment,
+          replies: updatedReplies,
+        };
+      }
+      return comment;
+    });
+
+    // Update the post with modified comments
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error editing reply:", error);
+    return { success: false, error: error.message };
+  }
+};

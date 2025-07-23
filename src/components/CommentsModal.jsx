@@ -16,6 +16,10 @@ import {
   toggleCommentLike,
   deleteComment,
   editComment,
+  addReply,
+  toggleReplyLike,
+  deleteReply,
+  editReply,
 } from "../api/FireStore";
 import { auth } from "../firebaseConfig";
 
@@ -34,6 +38,10 @@ const CommentsModal = ({
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState("");
   const [showDropdown, setShowDropdown] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [editingReply, setEditingReply] = useState(null);
+  const [editReplyText, setEditReplyText] = useState("");
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -147,6 +155,84 @@ const CommentsModal = ({
     }
   };
 
+  const handleAddReply = async (commentId) => {
+    if (!replyText.trim() || submitting) return;
+
+    if (!auth.currentUser) {
+      alert("Please log in to reply");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const result = await addReply(postId, commentId, replyText);
+      if (result.success) {
+        setReplyText("");
+        setReplyingTo(null);
+        await fetchComments(); // Refresh comments
+      } else {
+        alert(result.error || "Failed to add reply");
+      }
+    } catch (error) {
+      console.error("Error adding reply:", error);
+      alert("An error occurred while adding reply");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLikeReply = async (commentId, replyId) => {
+    if (!auth.currentUser) {
+      alert("Please log in to like replies");
+      return;
+    }
+
+    try {
+      const result = await toggleReplyLike(postId, commentId, replyId);
+      if (result.success) {
+        await fetchComments(); // Refresh comments to show updated likes
+      }
+    } catch (error) {
+      console.error("Error liking reply:", error);
+    }
+  };
+
+  const handleDeleteReply = async (commentId, replyId) => {
+    if (!confirm("Are you sure you want to delete this reply?")) return;
+
+    try {
+      const result = await deleteReply(postId, commentId, replyId);
+      if (result.success) {
+        await fetchComments(); // Refresh comments
+        setShowDropdown(null);
+      } else {
+        alert(result.error || "Failed to delete reply");
+      }
+    } catch (error) {
+      console.error("Error deleting reply:", error);
+      alert("An error occurred while deleting reply");
+    }
+  };
+
+  const handleEditReply = async (commentId, replyId) => {
+    if (!editReplyText.trim()) return;
+
+    try {
+      const result = await editReply(postId, commentId, replyId, editReplyText);
+      if (result.success) {
+        setEditingReply(null);
+        setEditReplyText("");
+        await fetchComments(); // Refresh comments
+      } else {
+        alert(result.error || "Failed to edit reply");
+      }
+    } catch (error) {
+      console.error("Error editing reply:", error);
+      alert("An error occurred while editing reply");
+    }
+  };
+
   const startEditing = (comment) => {
     setEditingComment(comment.id);
     setEditText(comment.text);
@@ -156,6 +242,32 @@ const CommentsModal = ({
   const cancelEditing = () => {
     setEditingComment(null);
     setEditText("");
+  };
+
+  const startReplying = (commentId) => {
+    setReplyingTo(commentId);
+    setShowDropdown(null);
+    // Focus on reply input after a short delay
+    setTimeout(() => {
+      const replyInput = document.querySelector(`#reply-input-${commentId}`);
+      if (replyInput) replyInput.focus();
+    }, 100);
+  };
+
+  const cancelReplying = () => {
+    setReplyingTo(null);
+    setReplyText("");
+  };
+
+  const startEditingReply = (commentId, reply) => {
+    setEditingReply(`${commentId}-${reply.id}`);
+    setEditReplyText(reply.text);
+    setShowDropdown(null);
+  };
+
+  const cancelEditingReply = () => {
+    setEditingReply(null);
+    setEditReplyText("");
   };
 
   const formatTimeAgo = (timestamp) => {
@@ -190,9 +302,19 @@ const CommentsModal = ({
     return comment.likedBy.some((like) => like.uid === auth.currentUser.uid);
   };
 
+  const isReplyLikedByCurrentUser = (reply) => {
+    if (!auth.currentUser || !reply.likedBy) return false;
+    return reply.likedBy.some((like) => like.uid === auth.currentUser.uid);
+  };
+
   const canDeleteComment = (comment) => {
     if (!auth.currentUser) return false;
     return comment.uid === auth.currentUser.uid;
+  };
+
+  const canDeleteReply = (reply) => {
+    if (!auth.currentUser) return false;
+    return reply.uid === auth.currentUser.uid;
   };
 
   if (!isOpen) return null;
@@ -248,120 +370,324 @@ const CommentsModal = ({
           ) : (
             <div className="p-4 space-y-4">
               {comments.map((comment) => (
-                <div key={comment.id} className="flex space-x-3">
-                  {/* Avatar */}
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                    {getProfileInitials(comment.author)}
-                  </div>
+                <div key={comment.id} className="space-y-3">
+                  {/* Main Comment */}
+                  <div className="flex space-x-3">
+                    {/* Avatar */}
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                      {getProfileInitials(comment.author)}
+                    </div>
 
-                  {/* Comment Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="bg-gray-50 rounded-lg px-3 py-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-medium text-sm text-gray-900">
-                          {comment.author || "Anonymous"}
-                        </h4>
+                    {/* Comment Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="bg-gray-50 rounded-lg px-3 py-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className="font-medium text-sm text-gray-900">
+                            {comment.author || "Anonymous"}
+                          </h4>
 
-                        {/* Comment Options */}
-                        {canDeleteComment(comment) && (
-                          <div className="relative">
-                            <button
-                              onClick={() =>
-                                setShowDropdown(
-                                  showDropdown === comment.id
-                                    ? null
-                                    : comment.id
-                                )
-                              }
-                              className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                            >
-                              <MoreHorizontal className="w-4 h-4 text-gray-400" />
-                            </button>
+                          {/* Comment Options */}
+                          {canDeleteComment(comment) && (
+                            <div className="relative">
+                              <button
+                                onClick={() =>
+                                  setShowDropdown(
+                                    showDropdown === comment.id
+                                      ? null
+                                      : comment.id
+                                  )
+                                }
+                                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                              >
+                                <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                              </button>
 
-                            {showDropdown === comment.id && (
-                              <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
-                                <button
-                                  onClick={() => startEditing(comment)}
-                                  className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                  <Edit3 className="w-4 h-4 mr-2" />
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleDeleteComment(comment.id)
-                                  }
-                                  className="flex items-center w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Delete
-                                </button>
-                              </div>
-                            )}
+                              {showDropdown === comment.id && (
+                                <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                                  <button
+                                    onClick={() => startEditing(comment)}
+                                    className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <Edit3 className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteComment(comment.id)
+                                    }
+                                    className="flex items-center w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Comment Text or Edit Form */}
+                        {editingComment === comment.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              rows={2}
+                              autoFocus
+                            />
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleEditComment(comment.id)}
+                                className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={cancelEditing}
+                                className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded-md hover:bg-gray-400 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
+                        ) : (
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {comment.text}
+                            {comment.editedAt && (
+                              <span className="text-xs text-gray-400 ml-2">
+                                (edited)
+                              </span>
+                            )}
+                          </p>
                         )}
                       </div>
 
-                      {/* Comment Text or Edit Form */}
-                      {editingComment === comment.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            rows={2}
-                            autoFocus
+                      {/* Comment Actions */}
+                      <div className="flex items-center space-x-4 mt-1 ml-3">
+                        <button
+                          onClick={() => handleLikeComment(comment.id)}
+                          className={`flex items-center space-x-1 text-xs transition-colors ${
+                            isCommentLikedByCurrentUser(comment)
+                              ? "text-red-500"
+                              : "text-gray-500 hover:text-red-500"
+                          }`}
+                        >
+                          <Heart
+                            className={`w-3 h-3 ${
+                              isCommentLikedByCurrentUser(comment)
+                                ? "fill-current"
+                                : ""
+                            }`}
                           />
+                          <span>{comment.likes || 0}</span>
+                        </button>
+
+                        <button
+                          onClick={() => startReplying(comment.id)}
+                          className="flex items-center space-x-1 text-xs text-gray-500 hover:text-blue-500 transition-colors"
+                        >
+                          <Reply className="w-3 h-3" />
+                          <span>Reply</span>
+                        </button>
+
+                        <span className="text-xs text-gray-400">
+                          {formatTimeAgo(comment.timestamp)}
+                        </span>
+                      </div>
+
+                      {/* Reply Form */}
+                      {replyingTo === comment.id && (
+                        <div className="mt-3 ml-3">
                           <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEditComment(comment.id)}
-                              className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded-md hover:bg-gray-400 transition-colors"
-                            >
-                              Cancel
-                            </button>
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                              {auth.currentUser
+                                ? getProfileInitials(
+                                    auth.currentUser.displayName ||
+                                      auth.currentUser.email?.split("@")[0] ||
+                                      "U"
+                                  )
+                                : "?"}
+                            </div>
+                            <div className="flex-1">
+                              <textarea
+                                id={`reply-input-${comment.id}`}
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                placeholder="Write a reply..."
+                                className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                rows={2}
+                                maxLength={500}
+                              />
+                              <div className="flex justify-between items-center mt-1">
+                                <div className="flex space-x-2">
+                                  <button
+                                    onClick={() => handleAddReply(comment.id)}
+                                    disabled={!replyText.trim() || submitting}
+                                    className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                  >
+                                    {submitting ? "Posting..." : "Reply"}
+                                  </button>
+                                  <button
+                                    onClick={cancelReplying}
+                                    className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded-md hover:bg-gray-400 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <span className="text-xs text-gray-400">
+                                  {replyText.length}/500
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-sm text-gray-700 leading-relaxed">
-                          {comment.text}
-                          {comment.editedAt && (
-                            <span className="text-xs text-gray-400 ml-2">
-                              (edited)
-                            </span>
-                          )}
-                        </p>
                       )}
-                    </div>
 
-                    {/* Comment Actions */}
-                    <div className="flex items-center space-x-4 mt-1 ml-3">
-                      <button
-                        onClick={() => handleLikeComment(comment.id)}
-                        className={`flex items-center space-x-1 text-xs transition-colors ${
-                          isCommentLikedByCurrentUser(comment)
-                            ? "text-red-500"
-                            : "text-gray-500 hover:text-red-500"
-                        }`}
-                      >
-                        <Heart
-                          className={`w-3 h-3 ${
-                            isCommentLikedByCurrentUser(comment)
-                              ? "fill-current"
-                              : ""
-                          }`}
-                        />
-                        <span>{comment.likes || 0}</span>
-                      </button>
+                      {/* Replies */}
+                      {comment.replies && comment.replies.length > 0 && (
+                        <div className="mt-3 ml-3 space-y-2 border-l-2 border-gray-100 pl-3">
+                          {comment.replies.map((reply) => (
+                            <div key={reply.id} className="flex space-x-2">
+                              {/* Reply Avatar */}
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                                {getProfileInitials(reply.author)}
+                              </div>
 
-                      <span className="text-xs text-gray-400">
-                        {formatTimeAgo(comment.timestamp)}
-                      </span>
+                              {/* Reply Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="bg-blue-50 rounded-lg px-3 py-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <h5 className="font-medium text-sm text-gray-900">
+                                      {reply.author || "Anonymous"}
+                                    </h5>
+
+                                    {/* Reply Options */}
+                                    {canDeleteReply(reply) && (
+                                      <div className="relative">
+                                        <button
+                                          onClick={() =>
+                                            setShowDropdown(
+                                              showDropdown ===
+                                                `${comment.id}-${reply.id}`
+                                                ? null
+                                                : `${comment.id}-${reply.id}`
+                                            )
+                                          }
+                                          className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                                        >
+                                          <MoreHorizontal className="w-3 h-3 text-gray-400" />
+                                        </button>
+
+                                        {showDropdown ===
+                                          `${comment.id}-${reply.id}` && (
+                                          <div className="absolute right-0 top-6 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                                            <button
+                                              onClick={() =>
+                                                startEditingReply(
+                                                  comment.id,
+                                                  reply
+                                                )
+                                              }
+                                              className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                            >
+                                              <Edit3 className="w-3 h-3 mr-2" />
+                                              Edit
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                handleDeleteReply(
+                                                  comment.id,
+                                                  reply.id
+                                                )
+                                              }
+                                              className="flex items-center w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                            >
+                                              <Trash2 className="w-3 h-3 mr-2" />
+                                              Delete
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Reply Text or Edit Form */}
+                                  {editingReply ===
+                                  `${comment.id}-${reply.id}` ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        value={editReplyText}
+                                        onChange={(e) =>
+                                          setEditReplyText(e.target.value)
+                                        }
+                                        className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        rows={2}
+                                        autoFocus
+                                      />
+                                      <div className="flex space-x-2">
+                                        <button
+                                          onClick={() =>
+                                            handleEditReply(
+                                              comment.id,
+                                              reply.id
+                                            )
+                                          }
+                                          className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors"
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={cancelEditingReply}
+                                          className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded-md hover:bg-gray-400 transition-colors"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-700 leading-relaxed">
+                                      {reply.text}
+                                      {reply.editedAt && (
+                                        <span className="text-xs text-gray-400 ml-2">
+                                          (edited)
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Reply Actions */}
+                                <div className="flex items-center space-x-3 mt-1 ml-3">
+                                  <button
+                                    onClick={() =>
+                                      handleLikeReply(comment.id, reply.id)
+                                    }
+                                    className={`flex items-center space-x-1 text-xs transition-colors ${
+                                      isReplyLikedByCurrentUser(reply)
+                                        ? "text-red-500"
+                                        : "text-gray-500 hover:text-red-500"
+                                    }`}
+                                  >
+                                    <Heart
+                                      className={`w-3 h-3 ${
+                                        isReplyLikedByCurrentUser(reply)
+                                          ? "fill-current"
+                                          : ""
+                                      }`}
+                                    />
+                                    <span>{reply.likes || 0}</span>
+                                  </button>
+
+                                  <span className="text-xs text-gray-400">
+                                    {formatTimeAgo(reply.timestamp)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
