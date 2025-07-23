@@ -1,490 +1,354 @@
-import React, { useState } from "react";
+import React from "react";
 import {
-  Edit3,
-  FileText,
-  Users,
-  MessageCircle,
-  Plus,
-  X,
-  UserPlus,
-  UserCheck,
+  Edit,
   MapPin,
-  Building,
+  Calendar,
+  Link as LinkIcon,
+  Building2,
+  Users,
+  FileText,
   Globe,
   Mail,
+  Phone,
+  MoreHorizontal,
 } from "lucide-react";
-import { auth } from "../firebaseConfig";
 
-export default function UserProfileCard({ onEdit, currentUser, isOwnProfile }) {
-  const [selectedInterests, setSelectedInterests] = useState([]);
-  const [showInterestsPopup, setShowInterestsPopup] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
+export default function ProfileCard({
+  currentUser,
+  onEdit,
+  isOwnProfile,
+  followButton,
+}) {
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "Recently";
 
-  const availableInterests = [
-    { name: "Machine Learning", color: "bg-blue-100 text-blue-800" },
-    { name: "Computer Vision", color: "bg-green-100 text-green-800" },
-    { name: "Neural Networks", color: "bg-purple-100 text-purple-800" },
-    { name: "Natural Language Processing", color: "bg-pink-100 text-pink-800" },
-    { name: "Deep Learning", color: "bg-indigo-100 text-indigo-800" },
-    { name: "Robotics", color: "bg-yellow-100 text-yellow-800" },
-    { name: "Data Science", color: "bg-red-100 text-red-800" },
-    { name: "Computer Graphics", color: "bg-teal-100 text-teal-800" },
-    { name: "Artificial Intelligence", color: "bg-orange-100 text-orange-800" },
-    { name: "Quantum Computing", color: "bg-violet-100 text-violet-800" },
-    { name: "Cybersecurity", color: "bg-gray-100 text-gray-800" },
-    { name: "Blockchain", color: "bg-emerald-100 text-emerald-800" },
-  ];
-
-  const handleInterestToggle = (interest) => {
-    if (!isOwnProfile) return; // Only allow editing for own profile
-
-    setSelectedInterests((prev) => {
-      const isSelected = prev.some((item) => item.name === interest.name);
-      if (isSelected) {
-        return prev.filter((item) => item.name !== interest.name);
-      } else {
-        return [...prev, interest];
-      }
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
     });
   };
 
-  const handleSaveInterests = () => {
-    setShowInterestsPopup(false);
-    // Here you would typically save to Firebase
+  const getInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
   };
 
-  const handleFollowToggle = () => {
-    setIsFollowing(!isFollowing);
-    // Here you would typically update Firebase
+  const formatWebsiteUrl = (website) => {
+    if (!website) return "";
+    if (website.startsWith("http://") || website.startsWith("https://")) {
+      return website;
+    }
+    return `https://${website}`;
   };
 
-  const stats = [
-    { icon: FileText, label: "Papers", value: currentUser?.papers || "0" },
-    {
-      icon: Users,
-      label: "Followers",
-      value: currentUser?.followers?.length || "0",
-    },
-    {
-      icon: MessageCircle,
-      label: "Discussions",
-      value: currentUser?.discussions || "0",
-    },
-  ];
-
-  // Helper function to format website URL for display
-  const formatWebsiteUrl = (url) => {
-    if (!url) return null;
-    return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const getWebsiteDisplay = (website) => {
+    if (!website) return "";
+    return website.replace(/^https?:\/\//, "").replace(/\/$/, "");
   };
 
   return (
-    <div className="w-full min-h-screen bg-gray-50">
-      {/* Cover Image - Full width, responsive height */}
-      <div className="w-full h-48 sm:h-64 md:h-72 lg:h-80 xl:h-96 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 relative">
-        <img
-          src="https://images.unsplash.com/photo-1557804506-669a67965ba0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2000&q=80"
-          alt="Cover"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="w-full px-4 sm:px-6 md:px-8 lg:px-16 xl:px-24 2xl:px-32">
-        {/* Profile Section - Mobile: Stack vertically, Desktop: Side by side */}
-        <div className="flex flex-col lg:flex-row items-center lg:items-start gap-4 sm:gap-6 lg:gap-8 -mt-16 sm:-mt-20 md:-mt-24 lg:-mt-32 relative z-10">
-          {/* Mobile & Tablet Layout - Profile Picture Centered */}
-          <div className="lg:hidden w-full flex flex-col items-center">
-            {/* Profile Picture */}
-            <div className="mb-4 sm:mb-6">
-              <img
-                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=400&q=80"
-                alt="Profile"
-                className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-full border-4 sm:border-6 md:border-8 border-white shadow-2xl object-cover"
-              />
-            </div>
+    <div className="w-full">
+      {/* Main Profile Card */}
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+        {/* Cover Image */}
+        <div className="relative">
+          <div className="h-32 sm:h-40 md:h-48 lg:h-56 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700">
+            {/* Optional: Add pattern overlay */}
+            <div className="absolute inset-0 bg-black/10"></div>
           </div>
+        </div>
 
-          {/* Desktop Layout - Left Column */}
-          <div className="hidden lg:flex flex-shrink-0 flex-col">
-            <div className="mb-6">
-              <img
-                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=M3wxMJA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=400&q=80"
-                alt="Profile"
-                className="w-48 h-48 rounded-full border-8 border-white shadow-2xl object-cover"
-              />
-            </div>
-
-            {/* Desktop Stats - Vertical */}
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-48">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 text-center">
-                Statistics
-              </h3>
-              <div className="space-y-4">
-                {stats.map((stat, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
-                  >
-                    <stat.icon className="w-6 h-6 text-gray-500" />
-                    <div>
-                      <div className="text-xl font-bold text-gray-900">
-                        {stat.value}
-                      </div>
-                      <div className="text-sm text-gray-600">{stat.label}</div>
-                    </div>
+        {/* Profile Content */}
+        <div className="relative px-4 sm:px-6 lg:px-8 pb-6 sm:pb-8">
+          {/* Avatar Section - Overlapping the cover */}
+          <div className="flex flex-col items-center sm:items-start -mt-12 sm:-mt-16 md:-mt-20">
+            {/* Avatar */}
+            <div className="relative mb-4">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 bg-white rounded-full border-4 border-white shadow-xl flex items-center justify-center relative">
+                {currentUser?.photoURL ? (
+                  <img
+                    src={currentUser.photoURL}
+                    alt={currentUser.name}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-lg sm:text-xl md:text-2xl font-bold">
+                    {getInitials(currentUser?.name)}
                   </div>
-                ))}
+                )}
+                {/* Online Status Indicator - Optional */}
+                <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
               </div>
             </div>
+
+            {/* Action Buttons - Mobile centered, Desktop right aligned */}
+            <div className="w-full flex justify-center sm:justify-end mb-4">
+              {isOwnProfile ? (
+                <button
+                  onClick={onEdit}
+                  className="flex items-center space-x-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-sm transition-all duration-200 border border-gray-200 hover:border-gray-300"
+                >
+                  <Edit className="h-4 w-4" />
+                  <span className="hidden sm:inline">Edit Profile</span>
+                  <span className="sm:hidden">Edit</span>
+                </button>
+              ) : (
+                <div className="flex space-x-2">
+                  {followButton}
+                  {/* Additional action button - could be Message */}
+                  <button className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300">
+                    <Mail className="h-4 w-4" />
+                  </button>
+                  {/* More options */}
+                  <button className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Main Content - Responsive */}
-          <div className="flex-1 w-full bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 lg:p-12">
-            {/* User Info */}
-            <div className="mb-6 sm:mb-8 text-center lg:text-left">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-3">
-                {currentUser?.name || "User Name"}
+          {/* Profile Info Section - Now clearly below cover */}
+          <div className="space-y-2 sm:-mt-14 sm:space-y-6">
+            {/* Name and Headline */}
+            <div className="text-center sm:text-left">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-2 leading-tight">
+                {currentUser?.name || "Anonymous User"}
               </h1>
-
-              {/* Professional Title */}
               {currentUser?.headline && (
-                <p className="text-base sm:text-lg md:text-xl text-blue-600 font-semibold mb-3 sm:mb-4">
+                <p className="text-base sm:text-lg text-gray-600 mb-3 font-medium">
                   {currentUser.headline}
                 </p>
               )}
 
-              {/* Location, Institution, Email info */}
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-6 mb-4 sm:mb-6">
-                {currentUser?.institution && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Building className="w-4 h-4" />
-                    <span className="text-sm sm:text-base">
-                      {currentUser.institution}
-                    </span>
-                  </div>
-                )}
-
+              {/* Quick Info Tags */}
+              <div className="flex flex-wrap justify-center sm:justify-start gap-2 text-xs sm:text-sm text-gray-500">
                 {currentUser?.location && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin className="w-4 h-4" />
-                    <span className="text-sm sm:text-base">
-                      {currentUser.location}
-                    </span>
+                  <div className="flex items-center space-x-1 bg-gray-50 px-3 py-1.5 rounded-full">
+                    <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span>{currentUser.location}</span>
                   </div>
                 )}
-
-                {currentUser?.email && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="w-4 h-4" />
-                    <span className="text-sm sm:text-base">
-                      {currentUser.email}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Website */}
-              {currentUser?.website && (
-                <div className="flex items-center justify-center lg:justify-start gap-2 mb-4 sm:mb-6">
-                  <Globe className="w-4 h-4 text-blue-600" />
-                  <a
-                    href={
-                      currentUser.website.startsWith("http")
-                        ? currentUser.website
-                        : `https://${currentUser.website}`
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline text-sm sm:text-base transition-colors"
-                  >
-                    {formatWebsiteUrl(currentUser.website)}
-                  </a>
+                <div className="flex items-center space-x-1 bg-gray-50 px-3 py-1.5 rounded-full">
+                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span>Joined {formatDate(currentUser?.createdAt)}</span>
                 </div>
-              )}
-
-              {/* Bio */}
-              {currentUser?.bio && (
-                <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-2 sm:gap-3 mb-4 sm:mb-6">
-                  <p className="text-sm sm:text-base md:text-lg text-gray-700 text-center lg:text-left">
-                    {currentUser.bio}
-                  </p>
-                  {/* {isOwnProfile && (
-                    <button onClick={onEdit}>
-                      <Edit3 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors" />
-                    </button>
-                  )} */}
-                </div>
-              )}
-
-              {/* Edit button if no bio */}
-              {!currentUser?.bio && isOwnProfile && (
-                <div className="flex items-center justify-center lg:justify-start mb-4 sm:mb-6">
-                  <button
-                    onClick={onEdit}
-                    className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    <Edit3 className="w-5 h-5 sm:w-6 sm:h-6" />
-                    <span className="text-sm">Add bio and more info</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Mobile Stats - Horizontal (after name) */}
-              <div className="lg:hidden bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 w-full mb-4 sm:mb-6">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4 text-center">
-                  Statistics
-                </h3>
-                <div className="grid grid-cols-3 gap-3 sm:gap-4">
-                  {stats.map((stat, index) => (
-                    <div
-                      key={index}
-                      className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg"
-                    >
-                      <stat.icon className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 mx-auto mb-1 sm:mb-2" />
-                      <div className="text-lg sm:text-xl font-bold text-gray-900">
-                        {stat.value}
-                      </div>
-                      <div className="text-xs sm:text-sm text-gray-600">
-                        {stat.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 sm:mb-8">
-                {isOwnProfile ? (
-                  <button
-                    onClick={onEdit}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105"
-                  >
-                    Edit Profile
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleFollowToggle}
-                      className={`font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105 flex items-center gap-2 ${
-                        isFollowing
-                          ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                          : "bg-blue-600 hover:bg-blue-700 text-white"
-                      }`}
-                    >
-                      {isFollowing ? (
-                        <>
-                          <UserCheck className="w-5 h-5" />
-                          Following
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="w-5 h-5" />
-                          Follow
-                        </>
-                      )}
-                    </button>
-                    <button className="bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-gray-300 hover:border-gray-400 text-base sm:text-lg transition-all duration-200 hover:shadow-lg hover:scale-105">
-                      Message
-                    </button>
-                  </>
-                )}
               </div>
             </div>
 
-            {/* About Section */}
-            {currentUser?.about && (
-              <div className="mb-6 sm:mb-8">
-                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
-                  About
-                </h3>
-                <p className="text-gray-700 text-sm sm:text-base md:text-lg leading-relaxed">
-                  {currentUser.about}
+            {/* Bio Section */}
+            {currentUser?.bio && (
+              <div className="text-center sm:text-left">
+                <p className="text-gray-700 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto sm:mx-0">
+                  {currentUser.bio}
                 </p>
               </div>
             )}
 
-            {/* Professional Information Card */}
-            {(currentUser?.institution ||
-              currentUser?.location ||
-              currentUser?.website) && (
-              <div className="mb-6 sm:mb-8 bg-gray-50 rounded-xl p-4 sm:p-6">
-                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
-                  Professional Information
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {currentUser?.institution && (
-                    <div className="flex items-start gap-3">
-                      <Building className="w-5 h-5 text-blue-600 mt-1 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm text-gray-600">Institution</p>
-                        <p className="text-base font-medium text-gray-900">
-                          {currentUser.institution}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentUser?.location && (
-                    <div className="flex items-start gap-3">
-                      <MapPin className="w-5 h-5 text-green-600 mt-1 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm text-gray-600">Location</p>
-                        <p className="text-base font-medium text-gray-900">
-                          {currentUser.location}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentUser?.website && (
-                    <div className="flex items-start gap-3 sm:col-span-2">
-                      <Globe className="w-5 h-5 text-purple-600 mt-1 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm text-gray-600">Website</p>
-                        <a
-                          href={
-                            currentUser.website.startsWith("http")
-                              ? currentUser.website
-                              : `https://${currentUser.website}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-base font-medium text-blue-600 hover:text-blue-800 underline transition-colors"
-                        >
-                          {formatWebsiteUrl(currentUser.website)}
-                        </a>
-                      </div>
-                    </div>
-                  )}
+            {/* Stats Section - Enhanced */}
+            <div className="bg-gray-50 rounded-xl p-4 sm:p-6">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="group cursor-pointer hover:bg-white rounded-lg p-2 sm:p-3 transition-all duration-200">
+                  <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                    {currentUser?.followers?.length || 0}
+                  </div>
+                  <div className="text-xs sm:text-sm text-gray-500 font-medium">
+                    Followers
+                  </div>
+                </div>
+                <div className="group cursor-pointer hover:bg-white rounded-lg p-2 sm:p-3 transition-all duration-200">
+                  <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                    {currentUser?.following?.length || 0}
+                  </div>
+                  <div className="text-xs sm:text-sm text-gray-500 font-medium">
+                    Following
+                  </div>
+                </div>
+                <div className="group cursor-pointer hover:bg-white rounded-lg p-2 sm:p-3 transition-all duration-200">
+                  <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                    {currentUser?.postsCount || 0}
+                  </div>
+                  <div className="text-xs sm:text-sm text-gray-500 font-medium">
+                    Posts
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Contact & Additional Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Institution */}
+              {currentUser?.institution && (
+                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl">
+                  <div className="flex-shrink-0">
+                    <Building2 className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 font-medium">
+                      Institution
+                    </div>
+                    <div className="text-sm text-gray-900 font-medium">
+                      {currentUser.institution}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Website */}
+              {currentUser?.website && (
+                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl">
+                  <div className="flex-shrink-0">
+                    <Globe className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-gray-500 font-medium">
+                      Website
+                    </div>
+                    <a
+                      href={formatWebsiteUrl(currentUser.website)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium truncate block"
+                    >
+                      {getWebsiteDisplay(currentUser.website)}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Email - Only show for own profile */}
+              {isOwnProfile && currentUser?.email && (
+                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl sm:col-span-2">
+                  <div className="flex-shrink-0">
+                    <Mail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-gray-500 font-medium">
+                      Email
+                    </div>
+                    <div className="text-sm text-gray-900 font-medium truncate">
+                      {currentUser.email}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Research Interests */}
-            <div className="mb-6 sm:mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900">
+            {currentUser?.interests && currentUser.interests.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3 text-center sm:text-left">
                   Research Interests
                 </h3>
-                {isOwnProfile && (
-                  <button
-                    onClick={() => setShowInterestsPopup(true)}
-                    className="flex cursor-pointer items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-fit"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Interests
-                  </button>
-                )}
-              </div>
-
-              {selectedInterests.length > 0 ? (
-                <div className="flex flex-wrap gap-2 sm:gap-3">
-                  {selectedInterests.map((interest, index) => (
+                <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                  {currentUser.interests.map((interest, index) => (
                     <span
                       key={index}
-                      className={`px-3 sm:px-4 md:px-5 py-2 sm:py-3 rounded-full text-xs sm:text-sm md:text-base font-medium ${interest.color} transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer`}
+                      className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer"
                     >
-                      {interest.name}
+                      {interest}
                     </span>
                   ))}
                 </div>
-              ) : (
-                <p className="text-gray-500 italic text-sm sm:text-base">
-                  {isOwnProfile
-                    ? 'No research interests added yet. Click "Add Interests" to get started.'
-                    : "No research interests added yet."}
-                </p>
-              )}
+              </div>
+            )}
+
+            {/* About Section */}
+            {currentUser?.about && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3 text-center sm:text-left">
+                  About
+                </h3>
+                <div className="prose prose-sm max-w-none">
+                  <p className="text-gray-600 leading-relaxed whitespace-pre-line text-center sm:text-left">
+                    {currentUser.about}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Actions - Mobile Only */}
+            <div className="sm:hidden flex justify-center space-x-4 pt-4 border-t border-gray-100">
+              <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-medium text-sm">
+                <Users className="h-4 w-4" />
+                <span>Connect</span>
+              </button>
+              <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-50 text-gray-600 rounded-xl font-medium text-sm">
+                <Mail className="h-4 w-4" />
+                <span>Message</span>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Interests Selection Popup - Only show for own profile */}
-      {showInterestsPopup && isOwnProfile && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
-            {/* Popup Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Select Research Interests
-              </h2>
-              <button
-                onClick={() => setShowInterestsPopup(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6 text-gray-500" />
-              </button>
+      {/* Additional Cards - Optional Quick Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+        {/* Recent Activity Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+              <FileText className="h-5 w-5 text-green-600" />
             </div>
-
-            {/* Popup Content */}
-            <div className="p-6 overflow-y-auto max-h-96">
-              <p className="text-gray-600 mb-6">
-                Choose your research interests from the options below:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {availableInterests.map((interest, index) => {
-                  const isSelected = selectedInterests.some(
-                    (item) => item.name === interest.name
-                  );
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => handleInterestToggle(interest)}
-                      className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-200 ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      <span className="font-medium">{interest.name}</span>
-                      {isSelected && (
-                        <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+            <div>
+              <div className="text-sm font-medium text-gray-900">
+                Recent Posts
               </div>
+              <div className="text-xs text-gray-500">Last 30 days</div>
             </div>
-
-            {/* Popup Footer */}
-            <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-600">
-                {selectedInterests.length} interest
-                {selectedInterests.length !== 1 ? "s" : ""} selected
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowInterestsPopup(false)}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveInterests}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                >
-                  Save Interests
-                </button>
-              </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-bold text-gray-900">
+              {currentUser?.recentPosts || 0}
             </div>
           </div>
         </div>
-      )}
+
+        {/* Engagement Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Users className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-900">
+                Engagement
+              </div>
+              <div className="text-xs text-gray-500">Total interactions</div>
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-bold text-gray-900">
+              {currentUser?.totalEngagement || 0}
+            </div>
+          </div>
+        </div>
+
+        {/* Network Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Globe className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <div className="text-sm font-medium text-gray-900">Network</div>
+              <div className="text-xs text-gray-500">Total connections</div>
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-bold text-gray-900">
+              {(currentUser?.followers?.length || 0) +
+                (currentUser?.following?.length || 0)}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

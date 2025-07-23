@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   UserPlus,
@@ -10,133 +10,363 @@ import {
   XCircle,
 } from "lucide-react";
 import Navbar from "../common/navbar";
+import {
+  getFollowRequests,
+  getFollowersList,
+  getFollowingList,
+  acceptFollowRequest,
+  rejectFollowRequest,
+  unfollowUser,
+  getMutualFollowersCount,
+  sendFollowRequest,
+  cancelFollowRequest,
+} from "../api/FireStore";
+import { auth } from "../firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
 const People = () => {
   const [activeTab, setActiveTab] = useState("requests");
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const navigate = useNavigate();
 
-  // Mock data - replace with actual data from Firebase
-  const followRequests = [
-    {
-      id: 1,
-      name: "Dr. Sarah Johnson",
-      username: "sarah.johnson",
-      avatar: null,
-      bio: "AI Research Scientist at Stanford University",
-      mutualFollowers: 12,
-      timestamp: "2 hours ago",
-    },
-    {
-      id: 2,
-      name: "Ahmed Khan",
-      username: "ahmed.khan",
-      avatar: null,
-      bio: "PhD Student in Computer Science",
-      mutualFollowers: 5,
-      timestamp: "1 day ago",
-    },
-    {
-      id: 3,
-      name: "Maria Rodriguez",
-      username: "maria.rodriguez",
-      avatar: null,
-      bio: "Machine Learning Engineer",
-      mutualFollowers: 8,
-      timestamp: "3 days ago",
-    },
-  ];
+  // State to track follow request status and loading for each user
+  const [followRequestStatus, setFollowRequestStatus] = useState({});
+  const [buttonLoading, setButtonLoading] = useState({});
 
-  const followers = [
-    {
-      id: 1,
-      name: "John Smith",
-      username: "john.smith",
-      avatar: null,
-      bio: "Data Scientist at Google",
-      isFollowing: true,
-      followedDate: "January 2025",
-    },
-    {
-      id: 2,
-      name: "Emily Chen",
-      username: "emily.chen",
-      avatar: null,
-      bio: "Research Fellow in Biomedical Engineering",
-      isFollowing: false,
-      followedDate: "December 2024",
-    },
-    {
-      id: 3,
-      name: "Michael Brown",
-      username: "michael.brown",
-      avatar: null,
-      bio: "Professor of Computer Science",
-      isFollowing: true,
-      followedDate: "November 2024",
-    },
-    {
-      id: 4,
-      name: "Lisa Wang",
-      username: "lisa.wang",
-      avatar: null,
-      bio: "PhD in Artificial Intelligence",
-      isFollowing: false,
-      followedDate: "October 2024",
-    },
-  ];
+  // Real data from Firebase
+  const [followRequests, setFollowRequests] = useState([]);
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
 
-  const following = [
-    {
-      id: 1,
-      name: "Prof. David Miller",
-      username: "david.miller",
-      avatar: null,
-      bio: "Head of AI Research Lab",
-      followedDate: "December 2024",
-    },
-    {
-      id: 2,
-      name: "Anna Thompson",
-      username: "anna.thompson",
-      avatar: null,
-      bio: "Cybersecurity Researcher",
-      followedDate: "November 2024",
-    },
-  ];
+  // Enhanced data with mutual followers
+  const [enhancedRequests, setEnhancedRequests] = useState([]);
+  const [enhancedFollowers, setEnhancedFollowers] = useState([]);
 
-  const handleAcceptRequest = (id) => {
-    console.log("Accepting follow request:", id);
-    // Add Firebase logic to accept follow request
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        // User is logged out, redirect to login page
+        navigate("/");
+        return;
+      }
+      setCurrentUser(user);
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    setLoading(true);
+
+    // Get follow requests (real-time)
+    const unsubscribeRequests = getFollowRequests(setFollowRequests);
+
+    // Load followers and following
+    const loadData = async () => {
+      try {
+        const [followersData, followingData] = await Promise.all([
+          getFollowersList(currentUser.uid),
+          getFollowingList(currentUser.uid),
+        ]);
+
+        setFollowers(followersData);
+        setFollowing(followingData);
+      } catch (error) {
+        console.error("Error loading followers/following data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      if (unsubscribeRequests) {
+        unsubscribeRequests();
+      }
+    };
+  }, [currentUser]);
+
+  // Enhance requests with mutual followers count
+  useEffect(() => {
+    const enhanceRequests = async () => {
+      if (followRequests.length === 0) {
+        setEnhancedRequests([]);
+        return;
+      }
+
+      const enhanced = await Promise.all(
+        followRequests.map(async (request) => {
+          const mutualCount = await getMutualFollowersCount(request.fromUID);
+          const timeAgo = getTimeAgo(request.timestamp);
+
+          return {
+            id: request.id,
+            name: request.fromUserData?.name || "Unknown User",
+            username: request.fromUserData?.username || "unknown",
+            avatar: request.fromUserData?.photoURL || null,
+            bio: request.fromUserData?.bio || "No bio available",
+            mutualFollowers: mutualCount,
+            timestamp: timeAgo,
+            requestId: request.id,
+            fromUID: request.fromUID,
+          };
+        })
+      );
+
+      setEnhancedRequests(enhanced);
+    };
+
+    enhanceRequests();
+  }, [followRequests]);
+
+  // Enhance followers with following status
+  useEffect(() => {
+    if (!currentUser || followers.length === 0) {
+      setEnhancedFollowers([]);
+      return;
+    }
+
+    const currentUserData = currentUser;
+    const followingUIDs = following.map((user) => user.id);
+
+    const enhanced = followers.map((follower) => ({
+      id: follower.id,
+      name: follower.name || "Unknown User",
+      username: follower.username || follower.email?.split("@")[0] || "unknown",
+      avatar: follower.photoURL || null,
+      bio: follower.bio || "No bio available",
+      isFollowing: followingUIDs.includes(follower.id),
+      followedDate: getFormattedDate(follower.createdAt) || "Recently",
+    }));
+
+    setEnhancedFollowers(enhanced);
+  }, [followers, following, currentUser]);
+
+  const handleAcceptRequest = async (requestId, fromUID) => {
+    console.log("Accepting follow request:", requestId);
+
+    try {
+      const result = await acceptFollowRequest(requestId, fromUID);
+      if (result.success) {
+        console.log("Follow request accepted successfully");
+        // Data will update automatically due to real-time listeners
+
+        // Refresh followers list
+        const followersData = await getFollowersList(currentUser.uid);
+        setFollowers(followersData);
+      } else {
+        console.error("Failed to accept follow request:", result.error);
+        alert("Failed to accept follow request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error accepting follow request:", error);
+      alert("An error occurred. Please try again.");
+    }
   };
 
-  const handleRejectRequest = (id) => {
-    console.log("Rejecting follow request:", id);
-    // Add Firebase logic to reject follow request
+  const handleRejectRequest = async (requestId) => {
+    console.log("Rejecting follow request:", requestId);
+
+    try {
+      const result = await rejectFollowRequest(requestId);
+      if (result.success) {
+        console.log("Follow request rejected successfully");
+        // Data will update automatically due to real-time listeners
+      } else {
+        console.error("Failed to reject follow request:", result.error);
+        alert("Failed to reject follow request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error rejecting follow request:", error);
+      alert("An error occurred. Please try again.");
+    }
   };
 
-  const handleFollowBack = (id) => {
-    console.log("Following back:", id);
-    // Add Firebase logic to follow user
+  const handleFollowBack = async (targetUID) => {
+    console.log("Following back:", targetUID);
+
+    // Set loading state
+    setButtonLoading((prev) => ({ ...prev, [targetUID]: true }));
+
+    try {
+      const result = await sendFollowRequest(targetUID);
+
+      if (result.success) {
+        console.log("Follow request sent successfully");
+
+        // Update follow request status to "requested"
+        setFollowRequestStatus((prev) => ({
+          ...prev,
+          [targetUID]: "requested",
+        }));
+
+        // Update the followers list to reflect the change
+        const followersData = await getFollowersList(currentUser.uid);
+        setFollowers(followersData);
+      } else {
+        console.error("Failed to send follow request:", result.error);
+        alert("Failed to send follow request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error sending follow request:", error);
+      alert("An error occurred. Please try again.");
+    } finally {
+      // Remove loading state
+      setButtonLoading((prev) => ({ ...prev, [targetUID]: false }));
+    }
   };
 
-  const handleUnfollow = (id) => {
-    console.log("Unfollowing:", id);
-    // Add Firebase logic to unfollow user
+  const handleCancelRequest = async (targetUID) => {
+    console.log("Cancelling follow request:", targetUID);
+
+    // Set loading state
+    setButtonLoading((prev) => ({ ...prev, [targetUID]: true }));
+
+    try {
+      const result = await cancelFollowRequest(targetUID);
+
+      if (result.success) {
+        console.log("Follow request cancelled successfully");
+
+        // Reset follow request status
+        setFollowRequestStatus((prev) => ({ ...prev, [targetUID]: null }));
+
+        // Update the followers list
+        const followersData = await getFollowersList(currentUser.uid);
+        setFollowers(followersData);
+      } else {
+        console.error("Failed to cancel follow request:", result.error);
+        alert("Failed to cancel follow request. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error cancelling follow request:", error);
+      alert("An error occurred. Please try again.");
+    } finally {
+      // Remove loading state
+      setButtonLoading((prev) => ({ ...prev, [targetUID]: false }));
+    }
+  };
+
+  const handleUnfollow = async (targetUID) => {
+    console.log("Unfollowing:", targetUID);
+
+    try {
+      const result = await unfollowUser(targetUID);
+      if (result.success) {
+        console.log("User unfollowed successfully");
+
+        // Refresh both followers and following lists
+        const [followersData, followingData] = await Promise.all([
+          getFollowersList(currentUser.uid),
+          getFollowingList(currentUser.uid),
+        ]);
+
+        setFollowers(followersData);
+        setFollowing(followingData);
+      } else {
+        console.error("Failed to unfollow user:", result.error);
+        alert("Failed to unfollow user. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error unfollowing user:", error);
+      alert("An error occurred. Please try again.");
+    }
+  };
+
+  // Function to get follow button configuration
+  const getFollowButtonConfig = (person) => {
+    const isLoading = buttonLoading[person.id];
+    const requestStatus = followRequestStatus[person.id];
+
+    if (isLoading) {
+      return {
+        text: "Loading...",
+        icon: null,
+        className: "bg-gray-400 text-white cursor-not-allowed",
+        disabled: true,
+        onClick: null,
+      };
+    }
+
+    if (requestStatus === "requested") {
+      return {
+        text: "Request Sent",
+        icon: Clock,
+        className: "bg-gray-200 text-gray-700 hover:bg-gray-300",
+        disabled: false,
+        onClick: () => handleCancelRequest(person.id),
+      };
+    }
+
+    // Default: Follow Back button
+    return {
+      text: "Follow Back",
+      icon: UserPlus,
+      className: "bg-blue-600 text-white hover:bg-blue-700",
+      disabled: false,
+      onClick: () => handleFollowBack(person.id),
+    };
   };
 
   const getInitials = (name) => {
+    if (!name) return "U";
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
-      .toUpperCase();
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  const getTimeAgo = (timestamp) => {
+    if (!timestamp) return "Unknown";
+
+    const now = new Date();
+    const time = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const diffInMinutes = Math.floor((now - time) / (1000 * 60));
+
+    if (diffInMinutes < 1) return "Just now";
+    if (diffInMinutes < 60) return `${diffInMinutes} minutes ago`;
+
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours} hours ago`;
+
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+
+    return time.toLocaleDateString();
+  };
+
+  const getFormattedDate = (timestamp) => {
+    if (!timestamp) return null;
+
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+    });
   };
 
   const filteredData = () => {
     let data = [];
-    if (activeTab === "requests") data = followRequests;
-    else if (activeTab === "followers") data = followers;
-    else if (activeTab === "following") data = following;
+    if (activeTab === "requests") data = enhancedRequests;
+    else if (activeTab === "followers") data = enhancedFollowers;
+    else if (activeTab === "following") {
+      data = following.map((user) => ({
+        id: user.id,
+        name: user.name || "Unknown User",
+        username: user.username || user.email?.split("@")[0] || "unknown",
+        avatar: user.photoURL || null,
+        bio: user.bio || "No bio available",
+        followedDate: getFormattedDate(user.createdAt) || "Recently",
+      }));
+    }
 
     return data.filter(
       (person) =>
@@ -149,7 +379,7 @@ const People = () => {
     {
       id: "requests",
       label: "Requests",
-      count: followRequests.length,
+      count: enhancedRequests.length,
       icon: Clock,
     },
     {
@@ -165,6 +395,26 @@ const People = () => {
       icon: UserCheck,
     },
   ];
+
+  if (!currentUser || loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-gray-300 rounded w-1/4"></div>
+            <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+            <div className="h-12 bg-gray-300 rounded"></div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-24 bg-gray-300 rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -277,198 +527,248 @@ const People = () => {
               </p>
             </div>
           ) : (
-            filteredData().map((person) => (
-              <div
-                key={person.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow duration-200"
-              >
-                {/* Mobile Layout - Stacked */}
-                <div className="sm:hidden">
-                  {/* User Info Section */}
-                  <div className="flex items-start space-x-3 mb-4">
-                    {/* Avatar */}
-                    <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
-                      {getInitials(person.name)}
-                    </div>
+            filteredData().map((person) => {
+              const followButtonConfig = getFollowButtonConfig(person);
 
-                    {/* User Details */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-semibold text-gray-900 truncate">
-                        {person.name}
-                      </h3>
-                      <p className="text-sm text-gray-500 mb-1">
-                        @{person.username}
-                      </p>
-                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                        {person.bio}
-                      </p>
-
-                      {/* Additional Info */}
-                      <div className="flex flex-col space-y-1 text-xs text-gray-500">
-                        {activeTab === "requests" && (
-                          <>
-                            <span>
-                              {person.mutualFollowers} mutual followers
-                            </span>
-                            <span>{person.timestamp}</span>
-                          </>
-                        )}
-                        {(activeTab === "followers" ||
-                          activeTab === "following") && (
-                          <span>Followed in {person.followedDate}</span>
+              return (
+                <div
+                  key={person.id}
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow duration-200"
+                >
+                  {/* Mobile Layout - Stacked */}
+                  <div className="sm:hidden">
+                    {/* User Info Section */}
+                    <div className="flex items-start space-x-3 mb-4">
+                      {/* Avatar */}
+                      <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                        {person.avatar ? (
+                          <img
+                            src={person.avatar}
+                            alt={person.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          getInitials(person.name)
                         )}
                       </div>
+
+                      {/* User Details */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-gray-900 truncate">
+                          {person.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-1">
+                          @{person.username}
+                        </p>
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                          {person.bio}
+                        </p>
+
+                        {/* Additional Info */}
+                        <div className="flex flex-col space-y-1 text-xs text-gray-500">
+                          {activeTab === "requests" && (
+                            <>
+                              <span>
+                                {person.mutualFollowers} mutual followers
+                              </span>
+                              <span>{person.timestamp}</span>
+                            </>
+                          )}
+                          {(activeTab === "followers" ||
+                            activeTab === "following") && (
+                            <span>Followed in {person.followedDate}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Action Buttons - Full Width on Mobile */}
-                  <div className="flex space-x-2">
-                    {activeTab === "requests" && (
-                      <>
-                        <button
-                          onClick={() => handleAcceptRequest(person.id)}
-                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          <span>Accept</span>
-                        </button>
-                        <button
-                          onClick={() => handleRejectRequest(person.id)}
-                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
-                        >
-                          <XCircle className="h-4 w-4" />
-                          <span>Decline</span>
-                        </button>
-                      </>
-                    )}
-
-                    {activeTab === "followers" && (
-                      <>
-                        {person.isFollowing ? (
+                    {/* Action Buttons - Full Width on Mobile */}
+                    <div className="flex space-x-2">
+                      {activeTab === "requests" && (
+                        <>
                           <button
-                            onClick={() => handleUnfollow(person.id)}
-                            className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
-                          >
-                            <UserX className="h-4 w-4" />
-                            <span>Unfollow</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleFollowBack(person.id)}
+                            onClick={() =>
+                              handleAcceptRequest(
+                                person.requestId,
+                                person.fromUID
+                              )
+                            }
                             className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
                           >
-                            <UserPlus className="h-4 w-4" />
-                            <span>Follow Back</span>
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Accept</span>
                           </button>
-                        )}
-                      </>
-                    )}
+                          <button
+                            onClick={() =>
+                              handleRejectRequest(person.requestId)
+                            }
+                            className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
 
-                    {activeTab === "following" && (
-                      <button
-                        onClick={() => handleUnfollow(person.id)}
-                        className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
-                      >
-                        <UserX className="h-4 w-4" />
-                        <span>Unfollow</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                      {activeTab === "followers" && (
+                        <>
+                          {person.isFollowing ? (
+                            <button
+                              onClick={() => handleUnfollow(person.id)}
+                              className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                            >
+                              <UserX className="h-4 w-4" />
+                              <span>Unfollow</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={followButtonConfig.onClick}
+                              disabled={followButtonConfig.disabled}
+                              className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${followButtonConfig.className}`}
+                            >
+                              {buttonLoading[person.id] ? (
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                followButtonConfig.icon && (
+                                  <followButtonConfig.icon className="h-4 w-4" />
+                                )
+                              )}
+                              <span>{followButtonConfig.text}</span>
+                            </button>
+                          )}
+                        </>
+                      )}
 
-                {/* Desktop/Tablet Layout - Side by Side */}
-                <div className="hidden sm:flex items-start justify-between">
-                  <div className="flex items-start space-x-4">
-                    {/* Avatar */}
-                    <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
-                      {getInitials(person.name)}
+                      {activeTab === "following" && (
+                        <button
+                          onClick={() => handleUnfollow(person.id)}
+                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
+                        >
+                          <UserX className="h-4 w-4" />
+                          <span>Unfollow</span>
+                        </button>
+                      )}
                     </div>
+                  </div>
 
-                    {/* User Info */}
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {person.name}
-                      </h3>
-                      <p className="text-sm text-gray-500 mb-1">
-                        @{person.username}
-                      </p>
-                      <p className="text-sm text-gray-600 mb-2">{person.bio}</p>
-
-                      {/* Additional Info */}
-                      <div className="flex items-center text-xs text-gray-500 space-x-4">
-                        {activeTab === "requests" && (
-                          <>
-                            <span>
-                              {person.mutualFollowers} mutual followers
-                            </span>
-                            <span>•</span>
-                            <span>{person.timestamp}</span>
-                          </>
-                        )}
-                        {(activeTab === "followers" ||
-                          activeTab === "following") && (
-                          <span>Followed in {person.followedDate}</span>
+                  {/* Desktop/Tablet Layout - Side by Side */}
+                  <div className="hidden sm:flex items-start justify-between">
+                    <div className="flex items-start space-x-4">
+                      {/* Avatar */}
+                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
+                        {person.avatar ? (
+                          <img
+                            src={person.avatar}
+                            alt={person.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          getInitials(person.name)
                         )}
                       </div>
+
+                      {/* User Info */}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {person.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-1">
+                          @{person.username}
+                        </p>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {person.bio}
+                        </p>
+
+                        {/* Additional Info */}
+                        <div className="flex items-center text-xs text-gray-500 space-x-4">
+                          {activeTab === "requests" && (
+                            <>
+                              <span>
+                                {person.mutualFollowers} mutual followers
+                              </span>
+                              <span>•</span>
+                              <span>{person.timestamp}</span>
+                            </>
+                          )}
+                          {(activeTab === "followers" ||
+                            activeTab === "following") && (
+                            <span>Followed in {person.followedDate}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex space-x-2 flex-shrink-0">
-                    {activeTab === "requests" && (
-                      <>
-                        <button
-                          onClick={() => handleAcceptRequest(person.id)}
-                          className="flex items-center space-x-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          <span>Accept</span>
-                        </button>
-                        <button
-                          onClick={() => handleRejectRequest(person.id)}
-                          className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
-                        >
-                          <XCircle className="h-4 w-4" />
-                          <span>Decline</span>
-                        </button>
-                      </>
-                    )}
-
-                    {activeTab === "followers" && (
-                      <>
-                        {person.isFollowing ? (
+                    {/* Action Buttons */}
+                    <div className="flex space-x-2 flex-shrink-0">
+                      {activeTab === "requests" && (
+                        <>
                           <button
-                            onClick={() => handleUnfollow(person.id)}
-                            className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
-                          >
-                            <UserX className="h-4 w-4" />
-                            <span>Unfollow</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleFollowBack(person.id)}
+                            onClick={() =>
+                              handleAcceptRequest(
+                                person.requestId,
+                                person.fromUID
+                              )
+                            }
                             className="flex items-center space-x-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
                           >
-                            <UserPlus className="h-4 w-4" />
-                            <span>Follow Back</span>
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Accept</span>
                           </button>
-                        )}
-                      </>
-                    )}
+                          <button
+                            onClick={() =>
+                              handleRejectRequest(person.requestId)
+                            }
+                            className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
 
-                    {activeTab === "following" && (
-                      <button
-                        onClick={() => handleUnfollow(person.id)}
-                        className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
-                      >
-                        <UserX className="h-4 w-4" />
-                        <span>Unfollow</span>
-                      </button>
-                    )}
+                      {activeTab === "followers" && (
+                        <>
+                          {person.isFollowing ? (
+                            <button
+                              onClick={() => handleUnfollow(person.id)}
+                              className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
+                            >
+                              <UserX className="h-4 w-4" />
+                              <span>Unfollow</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={followButtonConfig.onClick}
+                              disabled={followButtonConfig.disabled}
+                              className={`flex items-center space-x-1 px-4 py-2 rounded-lg transition-colors duration-200 ${followButtonConfig.className}`}
+                            >
+                              {buttonLoading[person.id] ? (
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                followButtonConfig.icon && (
+                                  <followButtonConfig.icon className="h-4 w-4" />
+                                )
+                              )}
+                              <span>{followButtonConfig.text}</span>
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {activeTab === "following" && (
+                        <button
+                          onClick={() => handleUnfollow(person.id)}
+                          className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
+                        >
+                          <UserX className="h-4 w-4" />
+                          <span>Unfollow</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

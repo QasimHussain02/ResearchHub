@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Home,
@@ -12,14 +12,61 @@ import {
 } from "lucide-react";
 import { onLogut } from "../api/AuthApi";
 import { useNavigate, useLocation } from "react-router-dom";
+import { auth } from "../firebaseConfig";
+import { getFollowRequests } from "../api/FireStore";
 
 const Navbar = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [isPopupOpenMobile, setIsPopupOpenMobile] = useState(false);
+  const [followRequestsCount, setFollowRequestsCount] = useState(0);
+  const [hasUnreadRequests, setHasUnreadRequests] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Track follow requests in real-time
+  useEffect(() => {
+    let unsubscribeRequests = null;
+
+    const setupFollowRequestsListener = () => {
+      if (auth.currentUser) {
+        // Set up real-time listener for follow requests
+        unsubscribeRequests = getFollowRequests((requests) => {
+          const requestCount = requests.length;
+          setFollowRequestsCount(requestCount);
+
+          // Show red dot if there are new requests
+          setHasUnreadRequests(requestCount > 0);
+        });
+      } else {
+        // Reset state when user is not authenticated
+        setFollowRequestsCount(0);
+        setHasUnreadRequests(false);
+      }
+    };
+
+    // Listen for auth state changes
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        setupFollowRequestsListener();
+      } else {
+        setFollowRequestsCount(0);
+        setHasUnreadRequests(false);
+        if (unsubscribeRequests) {
+          unsubscribeRequests();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeRequests) {
+        unsubscribeRequests();
+      }
+    };
+  }, []);
 
   const togglePopup = () => {
     setIsPopupOpen(!isPopupOpen);
@@ -35,30 +82,43 @@ const Navbar = () => {
     setIsPopupOpen(false);
   };
 
+  const handlePeopleNavigation = () => {
+    // Mark requests as "seen" when user clicks on People
+    setHasUnreadRequests(false);
+    navigate("/people");
+    setIsMobileMenuOpen(false);
+  };
+
   const navigationItems = [
     {
       icon: Home,
       label: "Home",
       path: "/home",
       active: location.pathname === "/home",
+      onClick: () => handleNavigation("/home"),
     },
     {
       icon: Users,
       label: "People",
       path: "/people",
       active: location.pathname === "/people",
+      onClick: handlePeopleNavigation,
+      hasNotification: hasUnreadRequests,
+      notificationCount: followRequestsCount,
     },
     {
       icon: MessageCircle,
       label: "Messages",
       path: "/messages",
       active: location.pathname === "/messages",
+      onClick: () => handleNavigation("/messages"),
     },
     {
       icon: Bell,
       label: "Notifications",
       path: "/notifications",
       active: location.pathname === "/notifications",
+      onClick: () => handleNavigation("/notifications"),
     },
   ];
 
@@ -95,7 +155,7 @@ const Navbar = () => {
             {navigationItems.map((item, index) => (
               <button
                 key={index}
-                onClick={() => handleNavigation(item.path)}
+                onClick={item.onClick}
                 className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${
                   item.active
                     ? "bg-blue-100 text-blue-600"
@@ -104,6 +164,19 @@ const Navbar = () => {
                 title={item.label}
               >
                 <item.icon className="h-6 w-6" />
+
+                {/* Notification Dot */}
+                {item.hasNotification && (
+                  <div className="absolute -top-1 -right-1 flex items-center justify-center">
+                    <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
+                      <span className="text-white text-xs font-bold">
+                        {item.notificationCount > 9
+                          ? "9+"
+                          : item.notificationCount}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </button>
             ))}
 
@@ -198,14 +271,29 @@ const Navbar = () => {
               {navigationItems.map((item, index) => (
                 <button
                   key={index}
-                  onClick={() => handleNavigation(item.path)}
+                  onClick={item.onClick}
                   className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 relative cursor-pointer ${
                     item.active
                       ? "bg-blue-100 text-blue-600"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                   }`}
                 >
-                  <item.icon className="h-5 w-5" />
+                  <div className="relative">
+                    <item.icon className="h-5 w-5" />
+
+                    {/* Mobile Notification Dot */}
+                    {item.hasNotification && (
+                      <div className="absolute -top-2 -right-2 flex items-center justify-center">
+                        <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
+                          <span className="text-white text-xs font-bold">
+                            {item.notificationCount > 9
+                              ? "9+"
+                              : item.notificationCount || ""}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <span className="text-sm font-medium">{item.label}</span>
                 </button>
               ))}

@@ -1,18 +1,20 @@
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
-  onSnapshot,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   getDocs,
+  onSnapshot,
   arrayUnion,
   arrayRemove,
+  addDoc,
+  orderBy,
 } from "firebase/firestore";
 
 let docRef = collection(db, "posts");
@@ -1150,5 +1152,432 @@ export const editReply = async (postId, commentId, replyId, newText) => {
   } catch (error) {
     console.error("Error editing reply:", error);
     return { success: false, error: error.message };
+  }
+};
+
+// Create follow request collection reference
+
+let followRequestsRef = collection(db, "followRequests");
+
+// Function to send a follow request
+export const sendFollowRequest = async (targetUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to send follow requests");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  if (currentUser.uid === targetUID) {
+    return { success: false, error: "Cannot send follow request to yourself" };
+  }
+
+  try {
+    // Check if request already exists
+    const existingRequestQuery = query(
+      followRequestsRef,
+      where("fromUID", "==", currentUser.uid),
+      where("toUID", "==", targetUID)
+    );
+    const existingRequests = await getDocs(existingRequestQuery);
+
+    if (!existingRequests.empty) {
+      return { success: false, error: "Follow request already sent" };
+    }
+
+    // Check if already following
+    const currentUserData = await getUserDataByUID(currentUser.uid);
+    const following = currentUserData?.following || [];
+
+    if (following.includes(targetUID)) {
+      return { success: false, error: "Already following this user" };
+    }
+
+    // Get user data for the request
+    const fromUserData = await getUserDataByUID(currentUser.uid);
+    const toUserData = await getUserDataByUID(targetUID);
+
+    if (!fromUserData || !toUserData) {
+      return { success: false, error: "User data not found" };
+    }
+
+    // Create follow request object
+    const followRequestObject = {
+      fromUID: currentUser.uid,
+      toUID: targetUID,
+      fromUserData: {
+        name: fromUserData.name || "Anonymous User",
+        email: fromUserData.email || "",
+        bio: fromUserData.bio || "",
+        photoURL: fromUserData.photoURL || "",
+        username:
+          fromUserData.username || fromUserData.email?.split("@")[0] || "user",
+      },
+      toUserData: {
+        name: toUserData.name || "Anonymous User",
+        email: toUserData.email || "",
+        username:
+          toUserData.username || toUserData.email?.split("@")[0] || "user",
+      },
+      status: "pending",
+      timestamp: new Date(),
+      createdAt: new Date(),
+    };
+
+    // Add the follow request to Firestore
+    const docRef = await addDoc(followRequestsRef, followRequestObject);
+    console.log("Follow request sent successfully:", docRef.id);
+
+    return { success: true, requestId: docRef.id };
+  } catch (error) {
+    console.error("Error sending follow request:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to accept a follow request
+export const acceptFollowRequest = async (requestId, fromUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to accept follow requests");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    // Get the follow request
+    const requestRef = doc(followRequestsRef, requestId);
+    const requestSnap = await getDoc(requestRef);
+
+    if (!requestSnap.exists()) {
+      return { success: false, error: "Follow request not found" };
+    }
+
+    const requestData = requestSnap.data();
+
+    // Verify the request is for the current user
+    if (requestData.toUID !== currentUser.uid) {
+      return { success: false, error: "Unauthorized to accept this request" };
+    }
+
+    // Update both users' following/followers lists
+    const currentUserRef = doc(userRef, currentUser.uid);
+    const fromUserRef = doc(userRef, fromUID);
+
+    // Get current data
+    const currentUserDoc = await getDoc(currentUserRef);
+    const fromUserDoc = await getDoc(fromUserRef);
+
+    if (currentUserDoc.exists() && fromUserDoc.exists()) {
+      const currentUserData = currentUserDoc.data();
+      const fromUserData = fromUserDoc.data();
+
+      // Update followers list for current user (add fromUID)
+      const updatedFollowers = [...(currentUserData.followers || [])];
+      if (!updatedFollowers.includes(fromUID)) {
+        updatedFollowers.push(fromUID);
+      }
+
+      // Update following list for the user who sent the request (add currentUser.uid)
+      const updatedFollowing = [...(fromUserData.following || [])];
+      if (!updatedFollowing.includes(currentUser.uid)) {
+        updatedFollowing.push(currentUser.uid);
+      }
+
+      // Update both user documents
+      await updateDoc(currentUserRef, { followers: updatedFollowers });
+      await updateDoc(fromUserRef, { following: updatedFollowing });
+
+      // Delete the follow request
+      await deleteDoc(requestRef);
+
+      console.log("Follow request accepted successfully");
+      return { success: true };
+    } else {
+      return { success: false, error: "User data not found" };
+    }
+  } catch (error) {
+    console.error("Error accepting follow request:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to reject/decline a follow request
+export const rejectFollowRequest = async (requestId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to reject follow requests");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    // Get the follow request
+    const requestRef = doc(followRequestsRef, requestId);
+    const requestSnap = await getDoc(requestRef);
+
+    if (!requestSnap.exists()) {
+      return { success: false, error: "Follow request not found" };
+    }
+
+    const requestData = requestSnap.data();
+
+    // Verify the request is for the current user
+    if (requestData.toUID !== currentUser.uid) {
+      return { success: false, error: "Unauthorized to reject this request" };
+    }
+
+    // Delete the follow request
+    await deleteDoc(requestRef);
+
+    console.log("Follow request rejected successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error rejecting follow request:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to cancel a sent follow request
+export const cancelFollowRequest = async (targetUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to cancel follow requests");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    // Find the follow request
+    const requestQuery = query(
+      followRequestsRef,
+      where("fromUID", "==", currentUser.uid),
+      where("toUID", "==", targetUID)
+    );
+    const querySnapshot = await getDocs(requestQuery);
+
+    if (querySnapshot.empty) {
+      return { success: false, error: "Follow request not found" };
+    }
+
+    // Delete the follow request (should only be one)
+    const requestDoc = querySnapshot.docs[0];
+    await deleteDoc(doc(followRequestsRef, requestDoc.id));
+
+    console.log("Follow request cancelled successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error cancelling follow request:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to get follow requests for current user (incoming requests)
+export const getFollowRequests = (setFollowRequests) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to get follow requests");
+    return null;
+  }
+
+  const requestQuery = query(
+    followRequestsRef,
+    where("toUID", "==", currentUser.uid),
+    where("status", "==", "pending")
+  );
+
+  const unsubscribe = onSnapshot(requestQuery, (querySnapshot) => {
+    const requests = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Sort by timestamp (newest first)
+    requests.sort((a, b) => {
+      const aTime = a.timestamp?.toDate
+        ? a.timestamp.toDate()
+        : new Date(a.timestamp);
+      const bTime = b.timestamp?.toDate
+        ? b.timestamp.toDate()
+        : new Date(b.timestamp);
+      return bTime - aTime;
+    });
+
+    setFollowRequests(requests);
+  });
+
+  return unsubscribe;
+};
+
+// Function to get sent follow requests (outgoing requests)
+export const getSentFollowRequests = (setSentRequests) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to get sent follow requests");
+    return null;
+  }
+
+  const requestQuery = query(
+    followRequestsRef,
+    where("fromUID", "==", currentUser.uid),
+    where("status", "==", "pending")
+  );
+
+  const unsubscribe = onSnapshot(requestQuery, (querySnapshot) => {
+    const requests = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    setSentRequests(requests);
+  });
+
+  return unsubscribe;
+};
+
+// Function to check if current user has sent a follow request to target user
+export const checkFollowRequestStatus = async (targetUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return { hasRequested: false, isFollowing: false };
+  }
+
+  try {
+    // Check if already following
+    const currentUserData = await getUserDataByUID(currentUser.uid);
+    const following = currentUserData?.following || [];
+
+    if (following.includes(targetUID)) {
+      return { hasRequested: false, isFollowing: true };
+    }
+
+    // Check if request exists
+    const requestQuery = query(
+      followRequestsRef,
+      where("fromUID", "==", currentUser.uid),
+      where("toUID", "==", targetUID),
+      where("status", "==", "pending")
+    );
+    const querySnapshot = await getDocs(requestQuery);
+
+    return {
+      hasRequested: !querySnapshot.empty,
+      isFollowing: false,
+      requestId: !querySnapshot.empty ? querySnapshot.docs[0].id : null,
+    };
+  } catch (error) {
+    console.error("Error checking follow request status:", error);
+    return { hasRequested: false, isFollowing: false };
+  }
+};
+
+// Function to get followers list for a user
+export const getFollowersList = async (userUID) => {
+  try {
+    const userData = await getUserDataByUID(userUID);
+    const followerUIDs = userData?.followers || [];
+
+    // Get user data for each follower
+    const followersData = await Promise.all(
+      followerUIDs.map(async (uid) => {
+        const followerData = await getUserDataByUID(uid);
+        return followerData;
+      })
+    );
+
+    // Filter out null results
+    return followersData.filter((data) => data !== null);
+  } catch (error) {
+    console.error("Error getting followers list:", error);
+    return [];
+  }
+};
+
+// Function to get following list for a user
+export const getFollowingList = async (userUID) => {
+  try {
+    const userData = await getUserDataByUID(userUID);
+    const followingUIDs = userData?.following || [];
+
+    // Get user data for each followed user
+    const followingData = await Promise.all(
+      followingUIDs.map(async (uid) => {
+        const followedData = await getUserDataByUID(uid);
+        return followedData;
+      })
+    );
+
+    // Filter out null results
+    return followingData.filter((data) => data !== null);
+  } catch (error) {
+    console.error("Error getting following list:", error);
+    return [];
+  }
+};
+
+// Function to unfollow a user
+export const unfollowUser = async (targetUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to unfollow");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const currentUserRef = doc(userRef, currentUser.uid);
+    const targetUserRef = doc(userRef, targetUID);
+
+    // Get current data
+    const currentUserDoc = await getDoc(currentUserRef);
+    const targetUserDoc = await getDoc(targetUserRef);
+
+    if (currentUserDoc.exists() && targetUserDoc.exists()) {
+      const currentUserData = currentUserDoc.data();
+      const targetUserData = targetUserDoc.data();
+
+      // Remove from following list (current user)
+      const updatedFollowing = (currentUserData.following || []).filter(
+        (uid) => uid !== targetUID
+      );
+
+      // Remove from followers list (target user)
+      const updatedFollowers = (targetUserData.followers || []).filter(
+        (uid) => uid !== currentUser.uid
+      );
+
+      // Update both documents
+      await updateDoc(currentUserRef, { following: updatedFollowing });
+      await updateDoc(targetUserRef, { followers: updatedFollowers });
+
+      console.log("User unfollowed successfully");
+      return { success: true };
+    } else {
+      return { success: false, error: "User data not found" };
+    }
+  } catch (error) {
+    console.error("Error unfollowing user:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to get mutual followers count
+export const getMutualFollowersCount = async (targetUID) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return 0;
+  }
+
+  try {
+    const currentUserData = await getUserDataByUID(currentUser.uid);
+    const targetUserData = await getUserDataByUID(targetUID);
+
+    const currentFollowing = currentUserData?.following || [];
+    const targetFollowers = targetUserData?.followers || [];
+
+    // Find intersection (mutual connections)
+    const mutualCount = currentFollowing.filter((uid) =>
+      targetFollowers.includes(uid)
+    ).length;
+
+    return mutualCount;
+  } catch (error) {
+    console.error("Error getting mutual followers count:", error);
+    return 0;
   }
 };
