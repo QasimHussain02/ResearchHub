@@ -524,3 +524,257 @@ export const debugCurrentUser = async () => {
   console.log("Firestore User Data:", userData);
   console.log("=== END DEBUG ===");
 };
+
+// Add these comment functions to your existing FireStore.jsx file
+
+// Function to add a comment to a post
+export const addComment = async (postId, commentText) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to comment");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    // Get fresh user data
+    const userData = await getUserDataByUID(currentUser.uid);
+
+    const userEmail = currentUser.email || userData?.email || "";
+    const userName =
+      userData?.name ||
+      currentUser.displayName ||
+      (userEmail ? userEmail.split("@")[0] : "") ||
+      "Anonymous User";
+
+    // Create comment object
+    const commentObject = {
+      id: Date.now() + Math.random().toString(36).substring(2, 15),
+      text: commentText.trim(),
+      uid: currentUser.uid,
+      author: userName,
+      email: userEmail,
+      timestamp: new Date(),
+      likes: 0,
+      likedBy: [],
+      replies: [],
+      userPhoto: userData?.photoURL || currentUser.photoURL || "",
+    };
+
+    const postData = postSnap.data();
+    const currentComments = postData.comments || 0;
+    const commentsList = postData.commentsList || [];
+
+    // Update post with new comment
+    await updateDoc(postRef, {
+      comments: currentComments + 1,
+      commentsList: arrayUnion(commentObject),
+    });
+
+    console.log("Comment added successfully:", commentObject);
+    return { success: true, comment: commentObject };
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to get comments for a specific post
+export const getPostComments = async (postId) => {
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Sort comments by timestamp (newest first)
+    const sortedComments = commentsList.sort((a, b) => {
+      const aTime = a.timestamp?.toDate
+        ? a.timestamp.toDate()
+        : new Date(a.timestamp);
+      const bTime = b.timestamp?.toDate
+        ? b.timestamp.toDate()
+        : new Date(b.timestamp);
+      return bTime - aTime;
+    });
+
+    return { success: true, comments: sortedComments };
+  } catch (error) {
+    console.error("Error getting post comments:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to like/unlike a comment
+export const toggleCommentLike = async (postId, commentId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to like comments");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Find the comment to update
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId) {
+        const likedBy = comment.likedBy || [];
+        const isLiked = likedBy.some((like) => like.uid === currentUser.uid);
+
+        if (isLiked) {
+          // Unlike the comment
+          return {
+            ...comment,
+            likes: Math.max(0, (comment.likes || 0) - 1),
+            likedBy: likedBy.filter((like) => like.uid !== currentUser.uid),
+          };
+        } else {
+          // Like the comment
+          const likeObject = {
+            uid: currentUser.uid,
+            timestamp: new Date(),
+          };
+          return {
+            ...comment,
+            likes: (comment.likes || 0) + 1,
+            likedBy: [...likedBy, likeObject],
+          };
+        }
+      }
+      return comment;
+    });
+
+    // Update the post with modified comments
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error toggling comment like:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to delete a comment (only by comment author or post author)
+export const deleteComment = async (postId, commentId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to delete comments");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Find the comment to check permissions
+    const commentToDelete = commentsList.find(
+      (comment) => comment.id === commentId
+    );
+    if (!commentToDelete) {
+      return { success: false, error: "Comment not found" };
+    }
+
+    // Check if user can delete (comment author or post author)
+    const canDelete =
+      commentToDelete.uid === currentUser.uid ||
+      postData.currUser?.uid === currentUser.uid ||
+      postData.authorId === currentUser.uid;
+
+    if (!canDelete) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this comment",
+      };
+    }
+
+    // Remove the comment from the list
+    const updatedComments = commentsList.filter(
+      (comment) => comment.id !== commentId
+    );
+
+    // Update the post
+    await updateDoc(postRef, {
+      comments: Math.max(0, (postData.comments || 0) - 1),
+      commentsList: updatedComments,
+    });
+
+    console.log("Comment deleted successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Function to edit a comment (only by comment author)
+export const editComment = async (postId, commentId, newText) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to edit comments");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const commentsList = postData.commentsList || [];
+
+    // Update the specific comment
+    const updatedComments = commentsList.map((comment) => {
+      if (comment.id === commentId && comment.uid === currentUser.uid) {
+        return {
+          ...comment,
+          text: newText.trim(),
+          editedAt: new Date(),
+        };
+      }
+      return comment;
+    });
+
+    // Update the post with modified comments
+    await updateDoc(postRef, {
+      commentsList: updatedComments,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error editing comment:", error);
+    return { success: false, error: error.message };
+  }
+};

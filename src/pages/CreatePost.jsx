@@ -151,6 +151,8 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
 
       // In the sendStatus function within CreatePost.jsx, update the postData object:
 
+      // In the sendStatus function within CreatePost.jsx, update the postData object:
+
       const postData = {
         postId: Date.now() + Math.random().toString(36).substring(2, 15),
         title: title.trim(),

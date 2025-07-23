@@ -18,7 +18,7 @@ import {
 import CreatePost from "../pages/CreatePost";
 import LikesModal from "../components/LikesModal";
 import { useNavigate } from "react-router-dom";
-
+import CommentsModal from "../components/CommentsModal";
 const Homefeed = ({ currUser }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
@@ -29,6 +29,13 @@ const Homefeed = ({ currUser }) => {
     postId: null,
     totalLikes: 0,
   });
+  const [commentsModal, setCommentsModal] = useState({
+    isOpen: false,
+    postId: null,
+    postTitle: "",
+    totalComments: 0,
+  });
+
   const [likingStates, setLikingStates] = useState({}); // Track which posts are being liked
   const navigate = useNavigate();
 
@@ -115,6 +122,24 @@ const Homefeed = ({ currUser }) => {
     setLikesModal({ isOpen: false, postId: null, totalLikes: 0 });
   };
 
+  const handleCommentsClick = (post) => {
+    setCommentsModal({
+      isOpen: true,
+      postId: post.id,
+      postTitle: post.title || post.status,
+      totalComments: post.comments || 0,
+    });
+  };
+
+  const closeCommentsModal = () => {
+    setCommentsModal({
+      isOpen: false,
+      postId: null,
+      postTitle: "",
+      totalComments: 0,
+    });
+  };
+
   const handleFilterChange = (filter) => {
     setActiveFilter(filter);
   };
@@ -197,6 +222,15 @@ const Homefeed = ({ currUser }) => {
             onClose={closeLikesModal}
             postId={likesModal.postId}
             totalLikes={likesModal.totalLikes}
+          />
+
+          {/* Comments Modal */}
+          <CommentsModal
+            isOpen={commentsModal.isOpen}
+            onClose={closeCommentsModal}
+            postId={commentsModal.postId}
+            postTitle={commentsModal.postTitle}
+            totalComments={commentsModal.totalComments}
           />
 
           <div className="lg:col-span-3">
@@ -367,7 +401,10 @@ const Homefeed = ({ currUser }) => {
                             Like ({post.likes || 0})
                           </button>
                         </button>
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
+                        <button
+                          onClick={() => handleCommentsClick(post)}
+                          className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300"
+                        >
                           <MessageCircle className="w-4 h-4" />
                           <span>Comment ({post.comments || 0})</span>
                         </button>

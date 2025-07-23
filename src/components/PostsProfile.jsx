@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { ProfileAvatar, ProfileLink } from "../helper/ProfileNavigation";
 import LikesModal from "./LikesModal";
+import CommentsModal from "../components/CommentsModal";
+import CommentPreview from "../components/CommentPreview";
 
 export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   const [posts, setPosts] = useState([]);
@@ -20,6 +22,12 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     isOpen: false,
     postId: null,
     totalLikes: 0,
+  });
+  const [commentsModal, setCommentsModal] = useState({
+    isOpen: false,
+    postId: null,
+    postTitle: "",
+    totalComments: 0,
   });
   const [likingStates, setLikingStates] = useState({});
 
@@ -115,6 +123,24 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     setLikesModal({ isOpen: false, postId: null, totalLikes: 0 });
   };
 
+  const handleCommentsClick = (post) => {
+    setCommentsModal({
+      isOpen: true,
+      postId: post.id,
+      postTitle: post.title || post.status,
+      totalComments: post.comments || 0,
+    });
+  };
+
+  const closeCommentsModal = () => {
+    setCommentsModal({
+      isOpen: false,
+      postId: null,
+      postTitle: "",
+      totalComments: 0,
+    });
+  };
+
   const handleShare = (post) => {
     // Basic share functionality
     if (navigator.share) {
@@ -162,6 +188,15 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
         onClose={closeLikesModal}
         postId={likesModal.postId}
         totalLikes={likesModal.totalLikes}
+      />
+
+      {/* Comments Modal */}
+      <CommentsModal
+        isOpen={commentsModal.isOpen}
+        onClose={closeCommentsModal}
+        postId={commentsModal.postId}
+        postTitle={commentsModal.postTitle}
+        totalComments={commentsModal.totalComments}
       />
 
       <div className="space-y-6">
@@ -311,7 +346,10 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                     </button>
                   </button>
 
-                  <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300">
+                  <button
+                    onClick={() => handleCommentsClick(post)}
+                    className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300"
+                  >
                     <MessageCircle className="w-4 h-4" />
                     <span>Comment ({post.comments || 0})</span>
                   </button>
