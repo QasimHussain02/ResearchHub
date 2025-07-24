@@ -186,6 +186,21 @@ const Homefeed = ({ currUser }) => {
     }
   };
 
+  const getProfileAvatar = (post) => {
+    // First try to get profile picture from user data
+    const profilePicture = post.currUser?.photoURL;
+
+    if (profilePicture) {
+      return (
+        <img
+          src={profilePicture}
+          alt={post.currUser?.name || post.author}
+          className="w-full h-full rounded-full object-cover"
+        />
+      );
+    }
+  };
+
   const getProfileInitials = (name) => {
     if (!name) return "U";
     return name
@@ -279,11 +294,9 @@ const Homefeed = ({ currUser }) => {
                       <div className="flex items-center space-x-4">
                         <div
                           onClick={() => handleProfileClick(post)}
-                          className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:shadow-lg transition-all duration-200"
+                          className="w-12 h-12 rounded-full overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 border-2 border-gray-100 hover:border-blue-200 flex-shrink-0"
                         >
-                          {getProfileInitials(
-                            post.currUser?.name || post.author
-                          )}
+                          {getProfileAvatar(post)}
                         </div>
 
                         <div>

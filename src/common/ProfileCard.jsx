@@ -1,4 +1,6 @@
-import React from "react";
+// Updated src/common/ProfileCard.jsx with image upload functionality
+
+import React, { useState } from "react";
 import {
   Edit,
   MapPin,
@@ -12,18 +14,23 @@ import {
   Phone,
   MoreHorizontal,
   MessageCircle,
+  Camera,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getOrCreateConversation } from "../api/FireStore";
+import { getOrCreateConversation, editUser } from "../api/FireStore";
+import ProfileImageUpload from "../components/ProfileImageUpload";
 
 export default function ProfileCard({
   currentUser,
   onEdit,
   isOwnProfile,
   followButton,
-  targetUID, // Add targetUID prop for messaging
+  targetUID,
 }) {
   const navigate = useNavigate();
+  const [isEditingImages, setIsEditingImages] = useState(false);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [updatingCover, setUpdatingCover] = useState(false);
 
   const formatDate = (timestamp) => {
     if (!timestamp) return "Recently";
@@ -65,21 +72,110 @@ export default function ProfileCard({
     }
 
     try {
-      // Create or get existing conversation
       const result = await getOrCreateConversation(targetUID);
 
       if (result.success) {
-        // Navigate to messages page with the specific user
         navigate(`/messages?userId=${targetUID}`);
       } else {
         console.error("Failed to create conversation:", result.error);
-        // Still navigate to messages page - conversation will be created when first message is sent
         navigate(`/messages?userId=${targetUID}`);
       }
     } catch (error) {
       console.error("Error creating conversation:", error);
-      // Fallback: still navigate to messages
       navigate(`/messages?userId=${targetUID}`);
+    }
+  };
+
+  // Handle profile picture upload
+  const handleProfileImageUpload = async (imageData) => {
+    setUpdatingProfile(true);
+    try {
+      const result = await editUser({
+        photoURL: imageData.url,
+        profileImagePublicId: imageData.publicId,
+        updatedAt: new Date(),
+      });
+
+      if (result.success) {
+        console.log("Profile picture updated successfully");
+        // The UI will update automatically through real-time listeners
+      } else {
+        alert("Failed to update profile picture: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error updating profile picture:", error);
+      alert("Error updating profile picture: " + error.message);
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  // Handle profile picture removal
+  const handleProfileImageRemove = async () => {
+    setUpdatingProfile(true);
+    try {
+      const result = await editUser({
+        photoURL: null,
+        profileImagePublicId: null,
+        updatedAt: new Date(),
+      });
+
+      if (result.success) {
+        console.log("Profile picture removed successfully");
+      } else {
+        alert("Failed to remove profile picture: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error removing profile picture:", error);
+      alert("Error removing profile picture: " + error.message);
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  // Handle cover photo upload
+  const handleCoverImageUpload = async (imageData) => {
+    setUpdatingCover(true);
+    try {
+      const result = await editUser({
+        coverPhotoURL: imageData.url,
+        coverImagePublicId: imageData.publicId,
+        updatedAt: new Date(),
+      });
+
+      if (result.success) {
+        console.log("Cover photo updated successfully");
+      } else {
+        alert("Failed to update cover photo: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error updating cover photo:", error);
+      alert("Error updating cover photo: " + error.message);
+    } finally {
+      setUpdatingCover(false);
+    }
+  };
+
+  // Handle cover photo removal
+  const handleCoverImageRemove = async () => {
+    setUpdatingCover(true);
+    try {
+      const result = await editUser({
+        coverPhotoURL: null,
+        coverImagePublicId: null,
+        updatedAt: new Date(),
+      });
+
+      if (result.success) {
+        console.log("Cover photo removed successfully");
+      } else {
+        alert("Failed to remove cover photo: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error removing cover photo:", error);
+      alert("Error removing cover photo: " + error.message);
+    } finally {
+      setUpdatingCover(false);
     }
   };
 
@@ -87,9 +183,44 @@ export default function ProfileCard({
     <div className="w-full">
       {/* Main Profile Card */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        {/* Cover Image */}
+        {/* Cover Image Section */}
         <div className="relative">
-          <div className="h-32 sm:h-40 md:h-48 lg:h-56 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700">
+          {/* Always Display Cover Photo - Don't change it unless specifically editing cover */}
+          <div className="h-32 sm:h-40 md:h-48 lg:h-56 relative">
+            {currentUser?.coverPhotoURL ? (
+              <img
+                src={currentUser.coverPhotoURL}
+                alt="Cover"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-700"></div>
+            )}
+
+            {/* Cover Photo Edit Button - Only for own profile */}
+            {isOwnProfile && (
+              <button
+                onClick={() => setIsEditingImages(!isEditingImages)}
+                className="absolute top-4 right-4 w-10 h-10 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full flex items-center justify-center transition-all duration-200"
+                title={isEditingImages ? "Cancel editing" : "Edit photos"}
+              >
+                <Camera className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* Cover Photo Upload Overlay - Only show when specifically editing cover */}
+            {isOwnProfile && isEditingImages && (
+              <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
+                <ProfileImageUpload
+                  currentImage={currentUser?.coverPhotoURL}
+                  onImageUpload={handleCoverImageUpload}
+                  onImageRemove={handleCoverImageRemove}
+                  type="cover"
+                  className="w-full h-full"
+                />
+              </div>
+            )}
+
             {/* Optional: Add pattern overlay */}
             <div className="absolute inset-0 bg-black/10"></div>
           </div>
@@ -101,34 +232,87 @@ export default function ProfileCard({
           <div className="flex flex-col items-center sm:items-start -mt-12 sm:-mt-16 md:-mt-20">
             {/* Avatar */}
             <div className="relative mb-4">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 bg-white rounded-full border-4 border-white shadow-xl flex items-center justify-center relative">
-                {currentUser?.photoURL ? (
-                  <img
-                    src={currentUser.photoURL}
-                    alt={currentUser.name}
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-lg sm:text-xl md:text-2xl font-bold">
-                    {getInitials(currentUser?.name)}
-                  </div>
+              {/* Always Display Profile Picture */}
+              <div className="relative">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 bg-white rounded-full border-4 border-white shadow-xl flex items-center justify-center relative overflow-hidden">
+                  {currentUser?.photoURL ? (
+                    <img
+                      src={currentUser.photoURL}
+                      alt={currentUser.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-lg sm:text-xl md:text-2xl font-bold">
+                      {getInitials(currentUser?.name)}
+                    </div>
+                  )}
+
+                  {/* Profile Picture Upload Overlay - Only show when editing */}
+                  {isOwnProfile && isEditingImages && (
+                    <div className="absolute inset-0 bg-black bg-opacity-60 rounded-full flex items-center justify-center">
+                      <ProfileImageUpload
+                        currentImage={currentUser?.photoURL}
+                        onImageUpload={handleProfileImageUpload}
+                        onImageRemove={handleProfileImageRemove}
+                        type="profile"
+                        className="w-full h-full"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Profile Picture Edit Button - Only for own profile */}
+                {isOwnProfile && (
+                  <button
+                    onClick={() => setIsEditingImages(!isEditingImages)}
+                    className="absolute bottom-1 right-1 w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-lg"
+                    title={
+                      isEditingImages
+                        ? "Cancel editing"
+                        : "Edit profile picture"
+                    }
+                  >
+                    <Camera className="h-4 w-4" />
+                  </button>
                 )}
-                {/* Online Status Indicator - Optional */}
-                <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+
+                {/* Online Status Indicator */}
+                <div className="absolute bottom-1 left-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
               </div>
             </div>
 
             {/* Action Buttons - Mobile centered, Desktop right aligned */}
             <div className="w-full flex justify-center sm:justify-end mb-4">
               {isOwnProfile ? (
-                <button
-                  onClick={onEdit}
-                  className="flex items-center space-x-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-sm transition-all duration-200 border border-gray-200 hover:border-gray-300"
-                >
-                  <Edit className="h-4 w-4" />
-                  <span className="hidden sm:inline">Edit Profile</span>
-                  <span className="sm:hidden">Edit</span>
-                </button>
+                <div className="flex space-x-2">
+                  {/* Edit Images Button */}
+                  <button
+                    onClick={() => setIsEditingImages(!isEditingImages)}
+                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 border ${
+                      isEditingImages
+                        ? "bg-blue-500 text-white border-blue-500 hover:bg-blue-600"
+                        : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <Camera className="h-4 w-4" />
+                    <span className="hidden sm:inline">
+                      {isEditingImages ? "Done" : "Edit Photos"}
+                    </span>
+                    <span className="sm:hidden">
+                      {isEditingImages ? "Done" : "Photos"}
+                    </span>
+                  </button>
+
+                  {/* Edit Profile Button */}
+                  <button
+                    onClick={onEdit}
+                    className="flex items-center space-x-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-sm transition-all duration-200 border border-gray-200 hover:border-gray-300"
+                  >
+                    <Edit className="h-4 w-4" />
+                    <span className="hidden sm:inline">Edit Profile</span>
+                    <span className="sm:hidden">Edit</span>
+                  </button>
+                </div>
               ) : (
                 <div className="flex space-x-2">
                   {followButton}
@@ -150,7 +334,7 @@ export default function ProfileCard({
             </div>
           </div>
 
-          {/* Profile Info Section - Now clearly below cover */}
+          {/* Profile Info Section - Rest remains the same */}
           <div className="space-y-2 sm:-mt-14 sm:space-y-6">
             {/* Name and Headline */}
             <div className="text-center sm:text-left">
@@ -392,6 +576,28 @@ export default function ProfileCard({
           </div>
         </div>
       </div>
+
+      {/* Image Upload Instructions Modal - Only shown when editing */}
+      {isOwnProfile && isEditingImages && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h4 className="text-sm font-semibold text-blue-900 mb-2">
+            📸 Photo Upload Tips
+          </h4>
+          <ul className="text-xs text-blue-800 space-y-1">
+            <li>
+              • <strong>Profile Picture:</strong> Square images work best (1:1
+              ratio)
+            </li>
+            <li>
+              • <strong>Cover Photo:</strong> Wide images recommended (16:9
+              ratio)
+            </li>
+            <li>• Maximum file size: 5MB per image</li>
+            <li>• Supported formats: JPG, PNG, GIF, WEBP</li>
+            <li>• Images are automatically optimized for web</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
