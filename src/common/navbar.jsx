@@ -13,7 +13,7 @@ import {
 import { onLogut } from "../api/AuthApi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { auth } from "../firebaseConfig";
-import { getFollowRequests } from "../api/FireStore";
+import { getFollowRequests, getTotalUnreadCount } from "../api/FireStore";
 
 const Navbar = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -22,6 +22,7 @@ const Navbar = () => {
   const [isPopupOpenMobile, setIsPopupOpenMobile] = useState(false);
   const [followRequestsCount, setFollowRequestsCount] = useState(0);
   const [hasUnreadRequests, setHasUnreadRequests] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,6 +69,37 @@ const Navbar = () => {
     };
   }, []);
 
+  // Track unread messages count
+  useEffect(() => {
+    let unsubscribeMessages = null;
+
+    const setupMessagesListener = () => {
+      if (auth.currentUser) {
+        unsubscribeMessages = getTotalUnreadCount(setUnreadMessagesCount);
+      } else {
+        setUnreadMessagesCount(0);
+      }
+    };
+
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        setupMessagesListener();
+      } else {
+        setUnreadMessagesCount(0);
+        if (unsubscribeMessages) {
+          unsubscribeMessages();
+        }
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+      }
+    };
+  }, []);
+
   const togglePopup = () => {
     setIsPopupOpen(!isPopupOpen);
   };
@@ -86,6 +118,11 @@ const Navbar = () => {
     // Mark requests as "seen" when user clicks on People
     setHasUnreadRequests(false);
     navigate("/people");
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleMessagesNavigation = () => {
+    navigate("/messages");
     setIsMobileMenuOpen(false);
   };
 
@@ -111,7 +148,9 @@ const Navbar = () => {
       label: "Messages",
       path: "/messages",
       active: location.pathname === "/messages",
-      onClick: () => handleNavigation("/messages"),
+      onClick: handleMessagesNavigation,
+      hasNotification: unreadMessagesCount > 0,
+      notificationCount: unreadMessagesCount,
     },
     {
       icon: Bell,

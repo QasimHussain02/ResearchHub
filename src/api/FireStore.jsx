@@ -2,19 +2,20 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import {
   collection,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
+  addDoc,
   query,
   where,
-  getDocs,
-  onSnapshot,
-  arrayUnion,
-  arrayRemove,
-  addDoc,
   orderBy,
+  onSnapshot,
+  doc,
+  updateDoc,
+  getDoc,
+  getDocs,
+  serverTimestamp as firebaseServerTimestamp,
+  arrayUnion,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 let docRef = collection(db, "posts");
@@ -1048,7 +1049,7 @@ export const deleteReply = async (postId, commentId, replyId) => {
     const postData = postSnap.data();
     const commentsList = postData.commentsList || [];
 
-    // Find the reply to check permissions
+    // Find the reply to check permission
     let replyToDelete = null;
     const commentWithReply = commentsList.find((comment) => {
       if (comment.id === commentId && comment.replies) {
@@ -1581,3 +1582,615 @@ export const getMutualFollowersCount = async (targetUID) => {
     return 0;
   }
 };
+// Collections references for messaging
+const conversationsRef = collection(db, "conversations");
+const messagesRef = collection(db, "messages");
+
+// Helper function to create conversation ID
+const createConversationId = (uid1, uid2) => {
+  return [uid1, uid2].sort().join("_");
+};
+
+// ===================== NO-INDEX MESSAGING FUNCTIONS =====================
+
+/**
+ * Send a message - NO INDEX VERSION
+ */
+export const sendMessage = async (receiverId, content) => {
+  console.log("🚀 Starting sendMessage function");
+  console.log("Receiver ID:", receiverId);
+  console.log("Content:", content);
+
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("❌ No current user");
+      throw new Error("User not authenticated");
+    }
+
+    console.log("✅ Current user:", currentUser.uid);
+
+    // Get user data
+    const [senderData, receiverData] = await Promise.all([
+      getUserDataByUID(currentUser.uid),
+      getUserDataByUID(receiverId),
+    ]);
+
+    console.log("✅ Sender data:", senderData);
+    console.log("✅ Receiver data:", receiverData);
+
+    if (!senderData || !receiverData) {
+      console.error("❌ Missing user data");
+      throw new Error("User data not found");
+    }
+
+    const conversationId = createConversationId(currentUser.uid, receiverId);
+    console.log("✅ Conversation ID:", conversationId);
+
+    // Create message with simplified structure - NO COMPOSITE QUERIES
+    const messageData = {
+      conversationId,
+      senderId: currentUser.uid,
+      receiverId,
+      content: content.trim(),
+      timestamp: firebaseServerTimestamp(),
+      clientTimestamp: new Date(),
+      status: "sent",
+      deleted: false,
+      senderName: senderData.name || "Unknown User",
+      receiverName: receiverData.name || "Unknown User",
+      // Add individual fields to avoid composite index needs
+      createdAt: firebaseServerTimestamp(),
+    };
+
+    console.log("📝 Message data:", messageData);
+
+    // Add message to Firestore
+    console.log("💾 Adding message to Firestore...");
+    const messageDocRef = await addDoc(messagesRef, messageData);
+    console.log("✅ Message added with ID:", messageDocRef.id);
+
+    // Create/update conversation - simplified structure
+    const conversationData = {
+      participants: [currentUser.uid, receiverId],
+      participantNames: {
+        [currentUser.uid]: senderData.name || "Unknown User",
+        [receiverId]: receiverData.name || "Unknown User",
+      },
+      lastMessage: {
+        content: content.trim(),
+        senderId: currentUser.uid,
+        timestamp: firebaseServerTimestamp(),
+        clientTimestamp: new Date(),
+      },
+      updatedAt: firebaseServerTimestamp(),
+      unreadCount: {
+        [currentUser.uid]: 0,
+        [receiverId]: 1,
+      },
+      // Denormalize data to avoid complex queries
+      [`participant_${currentUser.uid}`]: true,
+      [`participant_${receiverId}`]: true,
+    };
+
+    console.log("💬 Conversation data:", conversationData);
+
+    const conversationDocRef = doc(conversationsRef, conversationId);
+
+    // Check if conversation exists
+    const existingConv = await getDoc(conversationDocRef);
+
+    if (existingConv.exists()) {
+      console.log("📝 Updating existing conversation...");
+      const existing = existingConv.data();
+      await updateDoc(conversationDocRef, {
+        lastMessage: conversationData.lastMessage,
+        updatedAt: firebaseServerTimestamp(),
+        [`unreadCount.${receiverId}`]:
+          (existing.unreadCount?.[receiverId] || 0) + 1,
+        [`unreadCount.${currentUser.uid}`]: 0,
+      });
+      console.log("✅ Conversation updated");
+    } else {
+      console.log("🆕 Creating new conversation...");
+      await setDoc(conversationDocRef, {
+        ...conversationData,
+        createdAt: firebaseServerTimestamp(),
+      });
+      console.log("✅ New conversation created");
+    }
+
+    console.log("🎉 Message sent successfully!");
+    return { success: true, messageId: messageDocRef.id, conversationId };
+  } catch (error) {
+    console.error("❌ Error in sendMessage:", error);
+    console.error("❌ Error details:", error.message);
+    console.error("❌ Error stack:", error.stack);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get conversations - NO COMPOSITE INDEX REQUIRED
+ */
+export const getConversations = (setConversations) => {
+  console.log("🔄 Setting up conversations listener");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("❌ No current user for conversations");
+    setConversations([]);
+    return null;
+  }
+
+  console.log("👤 Current user for conversations:", currentUser.uid);
+
+  // Use simple query without composite index
+  const q = query(
+    conversationsRef,
+    where(`participant_${currentUser.uid}`, "==", true)
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      console.log("📨 Conversations snapshot received");
+      console.log("📊 Snapshot size:", snapshot.size);
+      console.log("📊 Snapshot empty:", snapshot.empty);
+
+      const conversations = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log("💬 Conversation doc:", doc.id, data);
+
+        const otherParticipantId = data.participants?.find(
+          (id) => id !== currentUser.uid
+        );
+        const otherParticipantName =
+          data.participantNames?.[otherParticipantId];
+
+        if (otherParticipantId && otherParticipantName) {
+          conversations.push({
+            id: doc.id,
+            ...data,
+            otherParticipant: {
+              id: otherParticipantId,
+              name: otherParticipantName,
+              avatar: null,
+            },
+            unreadCount: data.unreadCount?.[currentUser.uid] || 0,
+          });
+        }
+      });
+
+      // Sort by updatedAt manually (no composite index needed)
+      conversations.sort((a, b) => {
+        const aTime = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(0);
+        const bTime = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(0);
+        return bTime - aTime;
+      });
+
+      console.log("✅ Processed conversations:", conversations.length);
+      setConversations(conversations);
+    },
+    (error) => {
+      console.error("❌ Error in conversations listener:", error);
+      setConversations([]);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Get messages - NO COMPOSITE INDEX REQUIRED - FIXED ORDERING
+ */
+export const getMessages = (conversationId, setMessages) => {
+  console.log("📨 Setting up messages listener for:", conversationId);
+
+  if (!conversationId) {
+    console.error("❌ No conversation ID provided");
+    setMessages([]);
+    return null;
+  }
+
+  // Use simple query without composite index
+  const q = query(messagesRef, where("conversationId", "==", conversationId));
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      console.log("💬 Messages snapshot received for:", conversationId);
+      console.log("📊 Messages count:", snapshot.size);
+
+      const messages = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log("📝 Message doc:", doc.id, data);
+
+        // Only include non-deleted messages
+        if (!data.deleted) {
+          messages.push({
+            id: doc.id,
+            ...data,
+            // Use clientTimestamp if serverTimestamp is null, fallback to current time
+            timestamp:
+              data.timestamp?.toDate() || data.clientTimestamp || new Date(),
+          });
+        }
+      });
+
+      // Sort by timestamp - OLDEST TO NEWEST (chronological order)
+      messages.sort((a, b) => {
+        // Get timestamps for comparison
+        let aTime, bTime;
+
+        // Try to get the most accurate timestamp
+        if (a.timestamp instanceof Date) {
+          aTime = a.timestamp;
+        } else if (a.clientTimestamp instanceof Date) {
+          aTime = a.clientTimestamp;
+        } else if (a.clientTimestamp) {
+          aTime = new Date(a.clientTimestamp);
+        } else {
+          aTime = new Date(0); // Fallback to epoch
+        }
+
+        if (b.timestamp instanceof Date) {
+          bTime = b.timestamp;
+        } else if (b.clientTimestamp instanceof Date) {
+          bTime = b.clientTimestamp;
+        } else if (b.clientTimestamp) {
+          bTime = new Date(b.clientTimestamp);
+        } else {
+          bTime = new Date(0); // Fallback to epoch
+        }
+
+        // Sort oldest to newest (a - b for ascending order)
+        const result = aTime.getTime() - bTime.getTime();
+        console.log(
+          `📅 Sorting: ${a.content?.substring(
+            0,
+            20
+          )} (${aTime.toISOString()}) vs ${b.content?.substring(
+            0,
+            20
+          )} (${bTime.toISOString()}) = ${result}`
+        );
+        return result;
+      });
+
+      console.log("✅ Processed and sorted messages:", messages.length);
+      console.log(
+        "📅 Message order:",
+        messages.map((m) => ({
+          content: m.content?.substring(0, 20),
+          time: m.timestamp?.toISOString(),
+        }))
+      );
+      setMessages(messages);
+    },
+    (error) => {
+      console.error("❌ Error in messages listener:", error);
+      setMessages([]);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Mark messages as read - SIMPLIFIED
+ */
+export const markMessagesAsRead = async (conversationId) => {
+  console.log("👁️ Marking messages as read for:", conversationId);
+
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not authenticated");
+
+    const conversationRef = doc(conversationsRef, conversationId);
+    await updateDoc(conversationRef, {
+      [`unreadCount.${currentUser.uid}`]: 0,
+    });
+
+    console.log("✅ Messages marked as read");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error marking messages as read:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get total unread count - NO COMPOSITE INDEX
+ */
+export const getTotalUnreadCount = (setUnreadCount) => {
+  console.log("🔔 Setting up unread count listener");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.log("❌ No current user for unread count");
+    setUnreadCount(0);
+    return null;
+  }
+
+  // Use simple query
+  const q = query(
+    conversationsRef,
+    where(`participant_${currentUser.uid}`, "==", true)
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      console.log("🔔 Unread count snapshot received");
+
+      let totalUnread = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const userUnread = data.unreadCount?.[currentUser.uid] || 0;
+        totalUnread += userUnread;
+      });
+
+      console.log("📊 Total unread count:", totalUnread);
+      setUnreadCount(totalUnread);
+    },
+    (error) => {
+      console.error("❌ Error in unread count listener:", error);
+      setUnreadCount(0);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Create conversation for direct messaging - NO INDEX
+ */
+export const getOrCreateConversation = async (otherUserId) => {
+  console.log("🆕 Creating/getting conversation with:", otherUserId);
+
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not authenticated");
+
+    const conversationId = createConversationId(currentUser.uid, otherUserId);
+    console.log("🔗 Conversation ID:", conversationId);
+
+    // Check if conversation exists
+    const conversationRef = doc(conversationsRef, conversationId);
+    const existingConv = await getDoc(conversationRef);
+
+    if (existingConv.exists()) {
+      console.log("✅ Conversation already exists");
+      return { success: true, conversationId, exists: true };
+    }
+
+    // Get user data
+    const [currentUserData, otherUserData] = await Promise.all([
+      getUserDataByUID(currentUser.uid),
+      getUserDataByUID(otherUserId),
+    ]);
+
+    if (!currentUserData || !otherUserData) {
+      throw new Error("User data not found");
+    }
+
+    // Create new conversation with denormalized participant fields
+    const conversationData = {
+      participants: [currentUser.uid, otherUserId],
+      participantNames: {
+        [currentUser.uid]: currentUserData.name || "Unknown User",
+        [otherUserId]: otherUserData.name || "Unknown User",
+      },
+      lastMessage: null,
+      createdAt: firebaseServerTimestamp(),
+      updatedAt: firebaseServerTimestamp(),
+      unreadCount: {
+        [currentUser.uid]: 0,
+        [otherUserId]: 0,
+      },
+      // Denormalized fields to avoid array-contains queries
+      [`participant_${currentUser.uid}`]: true,
+      [`participant_${otherUserId}`]: true,
+    };
+
+    await setDoc(conversationRef, conversationData);
+    console.log("✅ New conversation created");
+
+    return { success: true, conversationId, exists: false };
+  } catch (error) {
+    console.error("❌ Error creating conversation:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a message - SIMPLE VERSION
+ */
+export const deleteMessage = async (messageId) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not authenticated");
+
+    const messageRef = doc(messagesRef, messageId);
+    const messageSnap = await getDoc(messageRef);
+
+    if (!messageSnap.exists()) {
+      throw new Error("Message not found");
+    }
+
+    const messageData = messageSnap.data();
+
+    // Only sender can delete their own messages
+    if (messageData.senderId !== currentUser.uid) {
+      throw new Error("You can only delete your own messages");
+    }
+
+    // Soft delete
+    await updateDoc(messageRef, {
+      deleted: true,
+      deletedAt: firebaseServerTimestamp(),
+      content: "[Message deleted]",
+    });
+
+    console.log("✅ Message deleted successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error deleting message:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Edit a message - SIMPLE VERSION
+ */
+export const editMessage = async (messageId, newContent) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("User not authenticated");
+
+    const messageRef = doc(messagesRef, messageId);
+    const messageSnap = await getDoc(messageRef);
+
+    if (!messageSnap.exists()) {
+      throw new Error("Message not found");
+    }
+
+    const messageData = messageSnap.data();
+
+    // Only sender can edit their own messages
+    if (messageData.senderId !== currentUser.uid) {
+      throw new Error("You can only edit your own messages");
+    }
+
+    await updateDoc(messageRef, {
+      content: newContent.trim(),
+      editedAt: firebaseServerTimestamp(),
+    });
+
+    console.log("✅ Message edited successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error editing message:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Update user's online status - SIMPLE VERSION
+ */
+export const updateOnlineStatus = async (isOnline = true) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const userDocRef = doc(db, "users", currentUser.uid);
+    await updateDoc(userDocRef, {
+      isOnline,
+      lastSeen: firebaseServerTimestamp(),
+    });
+
+    console.log("✅ Online status updated:", isOnline);
+  } catch (error) {
+    console.error("❌ Error updating online status:", error);
+  }
+};
+
+/**
+ * Get online status for multiple users - SIMPLE VERSION
+ */
+export const getOnlineStatus = (userIds, setOnlineUsers) => {
+  if (!userIds || userIds.length === 0) {
+    setOnlineUsers({});
+    return null;
+  }
+
+  console.log("👁️ Setting up online status listeners for:", userIds);
+
+  const userRefs = userIds.map((id) => doc(db, "users", id));
+
+  const unsubscribes = userRefs.map((userRef, index) =>
+    onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = docSnap.data();
+          const userId = userIds[index];
+
+          setOnlineUsers((prev) => ({
+            ...prev,
+            [userId]: {
+              isOnline: userData.isOnline || false,
+              lastSeen: userData.lastSeen,
+            },
+          }));
+        }
+      },
+      (error) => {
+        console.error(
+          "❌ Error getting online status for user:",
+          userIds[index],
+          error
+        );
+      }
+    )
+  );
+
+  // Return cleanup function
+  return () => {
+    console.log("🧹 Cleaning up online status listeners");
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
+  };
+};
+
+// ===================== TEST FUNCTIONS =====================
+
+/**
+ * Test function to check if messaging works
+ */
+export const testMessaging = async () => {
+  console.log("🧪 Testing messaging system...");
+
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("❌ No user logged in for test");
+      return;
+    }
+
+    console.log("👤 Current user for test:", currentUser.uid);
+    console.log("📧 Current user email:", currentUser.email);
+
+    // Test user data retrieval
+    const userData = await getUserDataByUID(currentUser.uid);
+    console.log("👤 User data:", userData);
+
+    // Test collections access - simple queries only
+    console.log("📁 Testing collections access...");
+    const testQuery = query(
+      messagesRef,
+      where("senderId", "==", currentUser.uid)
+    );
+    const testSnapshot = await getDocs(testQuery);
+    console.log("📊 Test query result size:", testSnapshot.size);
+
+    // Test conversation query
+    const convQuery = query(
+      conversationsRef,
+      where(`participant_${currentUser.uid}`, "==", true)
+    );
+    const convSnapshot = await getDocs(convQuery);
+    console.log("📊 Conversations query result size:", convSnapshot.size);
+
+    console.log("✅ Messaging system test completed");
+  } catch (error) {
+    console.error("❌ Test failed:", error);
+  }
+};
+
+// Export the test function so you can call it from console
+window.testMessaging = testMessaging;

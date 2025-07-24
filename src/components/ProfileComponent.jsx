@@ -43,6 +43,7 @@ export default function ProfileComponent({
             currentUser={userData}
             onEdit={onEdit}
             isOwnProfile={isOwnProfile}
+            targetUID={targetUID} // Pass targetUID for messaging
             followButton={
               !isOwnProfile && (
                 <FollowButton

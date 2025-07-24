@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
   Send,
@@ -11,141 +11,321 @@ import {
   Smile,
   CheckCheck,
   Check,
+  Trash2,
+  Edit3,
+  Circle,
 } from "lucide-react";
 import Navbar from "../common/navbar";
+import {
+  getConversations,
+  getMessages,
+  sendMessage,
+  markMessagesAsRead,
+  deleteMessage,
+  editMessage,
+  getTotalUnreadCount,
+  getOnlineStatus,
+  updateOnlineStatus,
+  getOrCreateConversation,
+} from "../api/FireStore";
+import { auth } from "../firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const Messages = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [newMessage, setNewMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sendingMessage, setSendingMessage] = useState(false);
 
-  // Sample conversations data
-  const conversations = [
-    {
-      id: 1,
-      name: "Dr. Sarah Johnson",
-      avatar: "SJ",
-      lastMessage:
-        "Thanks for sharing your research on AI ethics. Very insightful!",
-      timestamp: "2m ago",
-      unread: 2,
-      online: true,
-      role: "Professor",
-      institution: "MIT",
-    },
-    {
-      id: 2,
-      name: "Muhammad Ahmed",
-      avatar: "MA",
-      lastMessage:
-        "Are you available for collaboration on the blockchain project?",
-      timestamp: "1h ago",
-      unread: 0,
-      online: false,
-      role: "PhD Student",
-      institution: "Stanford University",
-    },
-    {
-      id: 3,
-      name: "Research Group - ML",
-      avatar: "RG",
-      lastMessage: "Meeting scheduled for tomorrow at 3 PM",
-      timestamp: "3h ago",
-      unread: 5,
-      online: false,
-      isGroup: true,
-      members: 8,
-    },
-    {
-      id: 4,
-      name: "Dr. Emily Chen",
-      avatar: "EC",
-      lastMessage: "Your paper draft looks great! Just sent my feedback.",
-      timestamp: "1d ago",
-      unread: 0,
-      online: true,
-      role: "Research Director",
-      institution: "Google Research",
-    },
-    {
-      id: 5,
-      name: "Alex Thompson",
-      avatar: "AT",
-      lastMessage: "Can you help me with the literature review?",
-      timestamp: "2d ago",
-      unread: 1,
-      online: false,
-      role: "Master's Student",
-      institution: "University of Cambridge",
-    },
-  ];
+  // Real-time data
+  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [editingMessage, setEditingMessage] = useState(null);
 
-  // Sample messages for selected chat
-  const sampleMessages = [
-    {
-      id: 1,
-      sender: "other",
-      content:
-        "Hi! I saw your recent paper on machine learning applications in healthcare. Really impressive work!",
-      timestamp: "10:30 AM",
-      status: "read",
-    },
-    {
-      id: 2,
-      sender: "me",
-      content:
-        "Thank you so much! It took months of research and data analysis. I'm glad you found it useful.",
-      timestamp: "10:32 AM",
-      status: "read",
-    },
-    {
-      id: 3,
-      sender: "other",
-      content:
-        "I'm working on something similar for my PhD thesis. Would you be interested in discussing potential collaboration opportunities?",
-      timestamp: "10:35 AM",
-      status: "read",
-    },
-    {
-      id: 4,
-      sender: "me",
-      content:
-        "Absolutely! I'd love to learn more about your research. Are you free for a video call this week?",
-      timestamp: "10:37 AM",
-      status: "read",
-    },
-    {
-      id: 5,
-      sender: "other",
-      content:
-        "Perfect! I'm available Thursday afternoon or Friday morning. What works better for you?",
-      timestamp: "10:40 AM",
-      status: "delivered",
-    },
-  ];
+  const navigate = useNavigate();
+  const location = useLocation();
+  const messagesEndRef = useRef(null);
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Get user ID from URL params if navigating from profile
+  const searchParams = new URLSearchParams(location.search);
+  const initialUserId = searchParams.get("userId");
 
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      // Here you would typically send the message to your backend
-      console.log("Sending message:", newMessage);
-      setNewMessage("");
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        navigate("/");
+        return;
+      }
+      console.log("Current user authenticated:", user.uid);
+      setCurrentUser(user);
+      setLoading(false);
+
+      // Update online status
+      updateOnlineStatus(true);
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  // Load conversations
+  useEffect(() => {
+    if (!currentUser) return;
+
+    console.log("Setting up conversations listener...");
+    const unsubscribe = getConversations(setConversations);
+    return () => {
+      if (unsubscribe) {
+        console.log("Cleaning up conversations listener");
+        unsubscribe();
+      }
+    };
+  }, [currentUser]);
+
+  // Load messages for selected chat
+  useEffect(() => {
+    if (!selectedChat) {
+      setMessages([]);
+      return;
+    }
+
+    console.log("Setting up messages listener for chat:", selectedChat.id);
+    const unsubscribe = getMessages(selectedChat.id, setMessages);
+    return () => {
+      if (unsubscribe) {
+        console.log("Cleaning up messages listener");
+        unsubscribe();
+      }
+    };
+  }, [selectedChat]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Mark messages as read when chat is selected
+  useEffect(() => {
+    if (selectedChat && selectedChat.unreadCount > 0) {
+      console.log("Marking messages as read for chat:", selectedChat.id);
+      markMessagesAsRead(selectedChat.id);
+    }
+  }, [selectedChat]);
+
+  // Track online status for conversation participants
+  useEffect(() => {
+    if (conversations.length === 0) return;
+
+    const participantIds = conversations.map(
+      (conv) => conv.otherParticipant.id
+    );
+    console.log("Setting up online status for participants:", participantIds);
+    const unsubscribe = getOnlineStatus(participantIds, setOnlineUsers);
+
+    return () => {
+      if (unsubscribe) {
+        console.log("Cleaning up online status listeners");
+        unsubscribe();
+      }
+    };
+  }, [conversations]);
+
+  // Handle direct message from profile
+  useEffect(() => {
+    if (initialUserId && conversations.length > 0 && currentUser) {
+      console.log("Looking for conversation with user:", initialUserId);
+      // Find existing conversation with this user
+      const existingConversation = conversations.find(
+        (conv) => conv.otherParticipant.id === initialUserId
+      );
+
+      if (existingConversation) {
+        console.log("Found existing conversation:", existingConversation.id);
+        handleChatSelect(existingConversation);
+      } else {
+        console.log("No existing conversation found, creating one...");
+        // Create a conversation if it doesn't exist
+        createConversationForUser(initialUserId);
+      }
+    }
+  }, [initialUserId, conversations, currentUser]);
+
+  // Create conversation for direct messaging
+  const createConversationForUser = async (userId) => {
+    try {
+      console.log("Creating conversation with user:", userId);
+      const result = await getOrCreateConversation(userId);
+
+      if (result.success) {
+        console.log("Conversation created/found:", result.conversationId);
+        // Wait a moment for the conversation to appear in the list
+        setTimeout(() => {
+          const newConversation = conversations.find(
+            (conv) => conv.id === result.conversationId
+          );
+          if (newConversation) {
+            handleChatSelect(newConversation);
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+    }
+  };
+
+  // Update online status on component unmount
+  useEffect(() => {
+    return () => {
+      if (currentUser) {
+        updateOnlineStatus(false);
+      }
+    };
+  }, [currentUser]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedChat || sendingMessage) return;
+
+    console.log("Sending message to:", selectedChat.otherParticipant.id);
+    setSendingMessage(true);
+    const messageContent = newMessage;
+    setNewMessage(""); // Clear input immediately for better UX
+
+    try {
+      const result = await sendMessage(
+        selectedChat.otherParticipant.id,
+        messageContent
+      );
+
+      if (result.success) {
+        console.log("Message sent successfully:", result.messageId);
+      } else {
+        console.error("Failed to send message:", result.error);
+        setNewMessage(messageContent); // Restore message on failure
+        alert("Failed to send message: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setNewMessage(messageContent); // Restore message on error
+      alert("Error sending message: " + error.message);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const handleEditMessage = async (messageId, newContent) => {
+    try {
+      const result = await editMessage(messageId, newContent);
+      if (result.success) {
+        setEditingMessage(null);
+        console.log("Message edited successfully");
+      } else {
+        console.error("Failed to edit message:", result.error);
+        alert("Failed to edit message: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error editing message:", error);
+      alert("Error editing message: " + error.message);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    if (!window.confirm("Are you sure you want to delete this message?")) {
+      return;
+    }
+
+    try {
+      const result = await deleteMessage(messageId);
+      if (result.success) {
+        console.log("Message deleted successfully");
+      } else {
+        console.error("Failed to delete message:", result.error);
+        alert("Failed to delete message: " + result.error);
+      }
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      alert("Error deleting message: " + error.message);
     }
   };
 
   const handleChatSelect = (chat) => {
+    console.log("Selecting chat:", chat.id);
     setSelectedChat(chat);
     setShowMobileChat(true);
+    setEditingMessage(null);
   };
 
   const handleBackToList = () => {
     setShowMobileChat(false);
     setSelectedChat(null);
+    setEditingMessage(null);
   };
+
+  const getInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  const formatTime = (timestamp) => {
+    if (!timestamp) return "";
+
+    const date = timestamp instanceof Date ? timestamp : timestamp.toDate();
+    const now = new Date();
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+
+    if (diffInMinutes < 1) return "now";
+    if (diffInMinutes < 60) return `${diffInMinutes}m`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h`;
+
+    return date.toLocaleDateString();
+  };
+
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return "";
+
+    const date = timestamp instanceof Date ? timestamp : timestamp.toDate();
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const isOnline = (userId) => {
+    return onlineUsers[userId]?.isOnline || false;
+  };
+
+  const filteredConversations = conversations.filter((conv) =>
+    conv.otherParticipant?.name
+      ?.toLowerCase()
+      .includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-300 rounded w-1/4 mb-4"></div>
+            <div className="h-64 bg-gray-300 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -159,25 +339,6 @@ const Messages = () => {
               showMobileChat ? "hidden" : "w-full"
             } md:w-80 lg:w-96 bg-white border-r border-gray-200 flex flex-col md:flex`}
           >
-            {/* Header */}
-            <div className="p-3 sm:p-4 border-b border-gray-200 flex-shrink-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">
-                Messages
-              </h1>
-
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input
-                  type="text"
-                  placeholder="Search conversations..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-gray-50 transition-colors"
-                />
-              </div>
-            </div>
-
             {/* Conversations */}
             <div className="flex-1 overflow-y-auto">
               {filteredConversations.length > 0 ? (
@@ -194,16 +355,18 @@ const Messages = () => {
                     <div className="flex items-start space-x-3">
                       {/* Avatar */}
                       <div className="relative flex-shrink-0">
-                        <div
-                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm sm:text-base ${
-                            conversation.isGroup
-                              ? "bg-green-500"
-                              : "bg-gradient-to-r from-blue-500 to-purple-600"
-                          }`}
-                        >
-                          {conversation.avatar}
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm sm:text-base bg-gradient-to-r from-blue-500 to-purple-600">
+                          {conversation.otherParticipant.avatar ? (
+                            <img
+                              src={conversation.otherParticipant.avatar}
+                              alt={conversation.otherParticipant.name}
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            getInitials(conversation.otherParticipant.name)
+                          )}
                         </div>
-                        {conversation.online && !conversation.isGroup && (
+                        {isOnline(conversation.otherParticipant.id) && (
                           <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-green-500 border-2 border-white rounded-full"></div>
                         )}
                       </div>
@@ -212,30 +375,31 @@ const Messages = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-1">
                           <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate pr-2">
-                            {conversation.name}
+                            {conversation.otherParticipant.name}
                           </h3>
                           <span className="text-xs text-gray-500 flex-shrink-0">
-                            {conversation.timestamp}
+                            {conversation.lastMessage &&
+                              formatTime(conversation.lastMessage.timestamp)}
                           </span>
                         </div>
 
-                        {(conversation.role || conversation.isGroup) && (
-                          <p className="text-xs text-gray-500 mb-1 truncate">
-                            {conversation.isGroup
-                              ? `${conversation.members} members`
-                              : `${conversation.role} • ${conversation.institution}`}
-                          </p>
-                        )}
-
                         <div className="flex items-center justify-between">
                           <p className="text-xs sm:text-sm text-gray-600 truncate pr-2">
-                            {conversation.lastMessage}
+                            {conversation.lastMessage ? (
+                              <>
+                                {conversation.lastMessage.senderId ===
+                                  currentUser.uid && "You: "}
+                                {conversation.lastMessage.content}
+                              </>
+                            ) : (
+                              "Start a conversation"
+                            )}
                           </p>
-                          {conversation.unread > 0 && (
+                          {conversation.unreadCount > 0 && (
                             <span className="flex-shrink-0 px-2 py-1 text-xs font-bold text-white bg-blue-500 rounded-full min-w-[20px] text-center">
-                              {conversation.unread > 99
+                              {conversation.unreadCount > 99
                                 ? "99+"
-                                : conversation.unread}
+                                : conversation.unreadCount}
                             </span>
                           )}
                         </div>
@@ -246,7 +410,7 @@ const Messages = () => {
               ) : (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-gray-500 text-sm">
-                    No conversations found
+                    {searchQuery ? "No conversations found" : "No messages yet"}
                   </p>
                 </div>
               )}
@@ -273,37 +437,42 @@ const Messages = () => {
                     </button>
 
                     <div className="relative flex-shrink-0">
-                      <div
-                        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
-                          selectedChat.isGroup
-                            ? "bg-green-500"
-                            : "bg-gradient-to-r from-blue-500 to-purple-600"
-                        }`}
-                      >
-                        {selectedChat.avatar}
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm bg-gradient-to-r from-blue-500 to-purple-600">
+                        {selectedChat.otherParticipant.avatar ? (
+                          <img
+                            src={selectedChat.otherParticipant.avatar}
+                            alt={selectedChat.otherParticipant.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          getInitials(selectedChat.otherParticipant.name)
+                        )}
                       </div>
-                      {selectedChat.online && !selectedChat.isGroup && (
+                      {isOnline(selectedChat.otherParticipant.id) && (
                         <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-500 border-2 border-white rounded-full"></div>
                       )}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
-                        {selectedChat.name}
+                        {selectedChat.otherParticipant.name}
                       </h3>
-                      {selectedChat.online && !selectedChat.isGroup && (
-                        <p className="text-xs text-green-500">Online</p>
-                      )}
-                      {selectedChat.isGroup && (
-                        <p className="text-xs text-gray-500">
-                          {selectedChat.members} members
-                        </p>
-                      )}
-                      {!selectedChat.online && !selectedChat.isGroup && (
-                        <p className="text-xs text-gray-500">
-                          Last seen 2h ago
-                        </p>
-                      )}
+                      <div className="flex items-center space-x-1">
+                        {isOnline(selectedChat.otherParticipant.id) ? (
+                          <>
+                            <Circle className="h-2 w-2 text-green-500 fill-current" />
+                            <p className="text-xs text-green-500">Online</p>
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            Last seen{" "}
+                            {formatTime(
+                              onlineUsers[selectedChat.otherParticipant.id]
+                                ?.lastSeen
+                            )}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -325,46 +494,172 @@ const Messages = () => {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-                  {sampleMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${
-                        message.sender === "me"
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${
-                          message.sender === "me"
-                            ? "bg-blue-500 text-white rounded-br-md"
-                            : "bg-gray-100 text-gray-900 rounded-bl-md"
-                        }`}
-                      >
-                        <p className="text-sm sm:text-base leading-relaxed break-words">
-                          {message.content}
-                        </p>
+                  {messages.length > 0 ? (
+                    messages.map((message, index) => {
+                      const isCurrentUser =
+                        message.senderId === currentUser.uid;
+                      const showAvatar =
+                        index === 0 ||
+                        messages[index - 1].senderId !== message.senderId;
+
+                      return (
                         <div
-                          className={`flex items-center justify-end mt-1 space-x-1 ${
-                            message.sender === "me"
-                              ? "text-blue-100"
-                              : "text-gray-500"
+                          key={message.id}
+                          className={`flex ${
+                            isCurrentUser ? "justify-end" : "justify-start"
                           }`}
                         >
-                          <span className="text-xs">{message.timestamp}</span>
-                          {message.sender === "me" && (
-                            <div className="flex-shrink-0">
-                              {message.status === "read" ? (
-                                <CheckCheck className="h-3 w-3" />
-                              ) : (
-                                <Check className="h-3 w-3" />
+                          <div
+                            className={`flex items-end space-x-2 max-w-[85%] sm:max-w-xs lg:max-w-md ${
+                              isCurrentUser
+                                ? "flex-row-reverse space-x-reverse"
+                                : ""
+                            }`}
+                          >
+                            {/* Avatar for received messages */}
+                            {!isCurrentUser && showAvatar && (
+                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white font-semibold text-xs bg-gradient-to-r from-blue-500 to-purple-600 flex-shrink-0">
+                                {selectedChat.otherParticipant.avatar ? (
+                                  <img
+                                    src={selectedChat.otherParticipant.avatar}
+                                    alt={selectedChat.otherParticipant.name}
+                                    className="w-full h-full rounded-full object-cover"
+                                  />
+                                ) : (
+                                  getInitials(
+                                    selectedChat.otherParticipant.name
+                                  )
+                                )}
+                              </div>
+                            )}
+
+                            {!isCurrentUser && !showAvatar && (
+                              <div className="w-6 h-6 flex-shrink-0"></div>
+                            )}
+
+                            <div className="relative group">
+                              {/* Message Bubble */}
+                              <div
+                                className={`px-3 sm:px-4 py-2 sm:py-3 rounded-2xl ${
+                                  isCurrentUser
+                                    ? "bg-blue-500 text-white rounded-br-md"
+                                    : "bg-gray-100 text-gray-900 rounded-bl-md"
+                                }`}
+                              >
+                                {editingMessage === message.id ? (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="text"
+                                      defaultValue={message.content}
+                                      onKeyPress={(e) => {
+                                        if (e.key === "Enter") {
+                                          handleEditMessage(
+                                            message.id,
+                                            e.target.value
+                                          );
+                                        }
+                                        if (e.key === "Escape") {
+                                          setEditingMessage(null);
+                                        }
+                                      }}
+                                      className="w-full px-2 py-1 text-sm bg-white text-black rounded border"
+                                      autoFocus
+                                    />
+                                    <div className="flex space-x-2">
+                                      <button
+                                        onClick={() => setEditingMessage(null)}
+                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="text-sm sm:text-base leading-relaxed break-words">
+                                      {message.deleted ? (
+                                        <span className="italic text-gray-500">
+                                          This message was deleted
+                                        </span>
+                                      ) : (
+                                        message.content
+                                      )}
+                                    </p>
+                                    <div
+                                      className={`flex items-center justify-between mt-1 space-x-2 ${
+                                        isCurrentUser
+                                          ? "text-blue-100"
+                                          : "text-gray-500"
+                                      }`}
+                                    >
+                                      <span className="text-xs">
+                                        {formatMessageTime(message.timestamp)}
+                                        {message.editedAt && (
+                                          <span className="ml-1 text-xs opacity-75">
+                                            (edited)
+                                          </span>
+                                        )}
+                                      </span>
+                                      {isCurrentUser && (
+                                        <div className="flex-shrink-0">
+                                          {message.status === "read" ? (
+                                            <CheckCheck className="h-3 w-3" />
+                                          ) : (
+                                            <Check className="h-3 w-3" />
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Message Actions */}
+                              {isCurrentUser && !message.deleted && (
+                                <div className="absolute top-0 right-0 transform translate-x-full opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                  <div className="flex space-x-1 ml-2">
+                                    <button
+                                      onClick={() =>
+                                        setEditingMessage(message.id)
+                                      }
+                                      className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700"
+                                      title="Edit message"
+                                    >
+                                      <Edit3 className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleDeleteMessage(message.id)
+                                      }
+                                      className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-red-600"
+                                      title="Delete message"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
-                          )}
+                          </div>
                         </div>
+                      );
+                    })
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Send className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          Start a conversation
+                        </h3>
+                        <p className="text-gray-500">
+                          Send a message to {selectedChat.otherParticipant.name}
+                        </p>
                       </div>
                     </div>
-                  ))}
+                  )}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Message Input */}
@@ -386,7 +681,8 @@ const Messages = () => {
                         }}
                         placeholder="Type a message..."
                         rows="1"
-                        className="w-full px-3 sm:px-4 py-2 sm:py-3 pr-10 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm sm:text-base"
+                        disabled={sendingMessage}
+                        className="w-full px-3 sm:px-4 py-2 sm:py-3 pr-10 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm sm:text-base disabled:opacity-50"
                         style={{
                           minHeight: "40px",
                           maxHeight: "120px",
@@ -399,10 +695,14 @@ const Messages = () => {
 
                     <button
                       onClick={handleSendMessage}
-                      disabled={!newMessage.trim()}
+                      disabled={!newMessage.trim() || sendingMessage}
                       className="p-2 sm:p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-full transition-colors flex-shrink-0 active:bg-blue-700"
                     >
-                      <Send className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                      {sendingMessage ? (
+                        <div className="h-4 w-4 sm:h-5 sm:w-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Send className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                      )}
                     </button>
                   </div>
                 </div>

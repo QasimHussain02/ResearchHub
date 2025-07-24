@@ -11,14 +11,20 @@ import {
   Mail,
   Phone,
   MoreHorizontal,
+  MessageCircle,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { getOrCreateConversation } from "../api/FireStore";
 
 export default function ProfileCard({
   currentUser,
   onEdit,
   isOwnProfile,
   followButton,
+  targetUID, // Add targetUID prop for messaging
 }) {
+  const navigate = useNavigate();
+
   const formatDate = (timestamp) => {
     if (!timestamp) return "Recently";
 
@@ -50,6 +56,31 @@ export default function ProfileCard({
   const getWebsiteDisplay = (website) => {
     if (!website) return "";
     return website.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  };
+
+  const handleSendMessage = async () => {
+    if (!targetUID) {
+      console.error("No target user ID provided for messaging");
+      return;
+    }
+
+    try {
+      // Create or get existing conversation
+      const result = await getOrCreateConversation(targetUID);
+
+      if (result.success) {
+        // Navigate to messages page with the specific user
+        navigate(`/messages?userId=${targetUID}`);
+      } else {
+        console.error("Failed to create conversation:", result.error);
+        // Still navigate to messages page - conversation will be created when first message is sent
+        navigate(`/messages?userId=${targetUID}`);
+      }
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      // Fallback: still navigate to messages
+      navigate(`/messages?userId=${targetUID}`);
+    }
   };
 
   return (
@@ -101,9 +132,14 @@ export default function ProfileCard({
               ) : (
                 <div className="flex space-x-2">
                   {followButton}
-                  {/* Additional action button - could be Message */}
-                  <button className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300">
-                    <Mail className="h-4 w-4" />
+                  {/* Message button - only show if not own profile */}
+                  <button
+                    onClick={handleSendMessage}
+                    className="flex items-center space-x-2 px-4 py-2.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl font-medium text-sm transition-all duration-200 border border-blue-200 hover:border-blue-300"
+                    title="Send Message"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span className="hidden sm:inline">Message</span>
                   </button>
                   {/* More options */}
                   <button className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all duration-200 border border-gray-200 hover:border-gray-300">
@@ -275,14 +311,21 @@ export default function ProfileCard({
 
             {/* Quick Actions - Mobile Only */}
             <div className="sm:hidden flex justify-center space-x-4 pt-4 border-t border-gray-100">
-              <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-medium text-sm">
-                <Users className="h-4 w-4" />
-                <span>Connect</span>
-              </button>
-              <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-50 text-gray-600 rounded-xl font-medium text-sm">
-                <Mail className="h-4 w-4" />
-                <span>Message</span>
-              </button>
+              {!isOwnProfile && (
+                <>
+                  <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-medium text-sm">
+                    <Users className="h-4 w-4" />
+                    <span>Connect</span>
+                  </button>
+                  <button
+                    onClick={handleSendMessage}
+                    className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-50 text-gray-600 rounded-xl font-medium text-sm hover:bg-gray-100 transition-colors"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>Message</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
