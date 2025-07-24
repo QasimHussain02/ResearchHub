@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import FileUpload from "../components/FileUpload";
+
 import {
   X,
   Upload,
@@ -22,6 +24,7 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
   const [content, setContent] = useState("");
   const [userData, setUserData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fileData, setFileData] = useState(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -94,6 +97,16 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
 
   const removeTag = (tagToRemove) => {
     setSelectedTags(selectedTags.filter((tag) => tag !== tagToRemove));
+  };
+
+  const handleFileUpload = (uploadedFile) => {
+    setFileData(uploadedFile);
+    console.log("File uploaded:", uploadedFile);
+  };
+
+  const handleFileRemove = (removedFile) => {
+    setFileData(null);
+    console.log("File removed:", removedFile);
   };
 
   async function sendStatus(title, content) {
@@ -181,6 +194,10 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
         currUser: currentUserData,
         createdAt: new Date(),
         updatedAt: new Date(),
+        fileURL: fileData?.url || null,
+        fileName: fileData?.name || null,
+        fileType: fileData?.type || null,
+        fileSize: fileData?.size || null,
       };
       console.log("Creating post with data:", postData);
 
@@ -193,7 +210,7 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
       setSelectedTags([]);
       setPostType("discussion");
       setVisibility("public");
-
+      setFileData(null);
       console.log("Post created successfully");
     } catch (error) {
       console.error("Error creating post:", error);
@@ -206,6 +223,12 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
   const handleClose = () => {
     if (isSubmitting) return; // Prevent closing while submitting
     setIsOpen(false);
+    setTitle("");
+    setContent("");
+    setSelectedTags([]);
+    setPostType("discussion");
+    setVisibility("public");
+    setFileData(null);
   };
 
   const canSubmit = title.trim() && content.trim() && !isSubmitting;
@@ -310,6 +333,15 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                 maxLength={2000}
               />
+              <div className="mt-4">
+                <FileUpload
+                  onFileUpload={handleFileUpload}
+                  onFileRemove={handleFileRemove}
+                  maxFiles={1}
+                  accept="image/*,.pdf,.doc,.docx"
+                  className="mb-4"
+                />
+              </div>
               <div className="flex justify-between items-center mt-2">
                 <div className="flex space-x-2">
                   {[
