@@ -16,6 +16,7 @@ import {
   Circle,
 } from "lucide-react";
 import Navbar from "../common/navbar";
+import EmojiPicker from "../components/EmojiPicker";
 import {
   getConversations,
   getMessages,
@@ -47,9 +48,14 @@ const Messages = () => {
   const [onlineUsers, setOnlineUsers] = useState({});
   const [editingMessage, setEditingMessage] = useState(null);
 
+  // Emoji picker state
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiButtonRef = useRef(null);
+
   const navigate = useNavigate();
   const location = useLocation();
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
 
   // Get user ID from URL params if navigating from profile
   const searchParams = new URLSearchParams(location.search);
@@ -186,6 +192,14 @@ const Messages = () => {
     };
   }, [currentUser]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [newMessage]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -206,6 +220,12 @@ const Messages = () => {
 
       if (result.success) {
         console.log("Message sent successfully:", result.messageId);
+        // Focus back to textarea after sending
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+          }
+        }, 100);
       } else {
         console.error("Failed to send message:", result.error);
         setNewMessage(messageContent); // Restore message on failure
@@ -260,12 +280,34 @@ const Messages = () => {
     setSelectedChat(chat);
     setShowMobileChat(true);
     setEditingMessage(null);
+    setShowEmojiPicker(false);
   };
 
   const handleBackToList = () => {
     setShowMobileChat(false);
     setSelectedChat(null);
     setEditingMessage(null);
+    setShowEmojiPicker(false);
+  };
+
+  const handleEmojiSelect = (emoji) => {
+    // Insert emoji at cursor position or at the end
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText =
+        newMessage.slice(0, start) + emoji + newMessage.slice(end);
+      setNewMessage(newText);
+
+      // Set cursor position after emoji
+      setTimeout(() => {
+        textarea.setSelectionRange(start + emoji.length, start + emoji.length);
+        textarea.focus();
+      }, 0);
+    } else {
+      setNewMessage((prev) => prev + emoji);
+    }
   };
 
   const getInitials = (name) => {
@@ -339,6 +381,23 @@ const Messages = () => {
               showMobileChat ? "hidden" : "w-full"
             } md:w-80 lg:w-96 bg-white border-r border-gray-200 flex flex-col md:flex`}
           >
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                Messages
+              </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+            </div>
+
             {/* Conversations */}
             <div className="flex-1 overflow-y-auto">
               {filteredConversations.length > 0 ? (
@@ -457,22 +516,6 @@ const Messages = () => {
                       <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
                         {selectedChat.otherParticipant.name}
                       </h3>
-                      <div className="flex items-center space-x-1">
-                        {isOnline(selectedChat.otherParticipant.id) ? (
-                          <>
-                            <Circle className="h-2 w-2 text-green-500 fill-current" />
-                            <p className="text-xs text-green-500">Online</p>
-                          </>
-                        ) : (
-                          <p className="text-xs text-gray-500">
-                            Last seen{" "}
-                            {formatTime(
-                              onlineUsers[selectedChat.otherParticipant.id]
-                                ?.lastSeen
-                            )}
-                          </p>
-                        )}
-                      </div>
                     </div>
                   </div>
 
@@ -671,6 +714,7 @@ const Messages = () => {
 
                     <div className="flex-1 relative">
                       <textarea
+                        ref={textareaRef}
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={(e) => {
@@ -688,9 +732,26 @@ const Messages = () => {
                           maxHeight: "120px",
                         }}
                       />
-                      <button className="absolute right-2 sm:right-3 bottom-2 sm:bottom-3 p-1 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors">
-                        <Smile className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                      </button>
+
+                      {/* Emoji Button */}
+                      <div className="absolute right-2 sm:right-3 bottom-2 sm:bottom-3">
+                        <button
+                          ref={emojiButtonRef}
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          className="p-1 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors"
+                          title="Add emoji"
+                        >
+                          <Smile className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                        </button>
+
+                        {/* Emoji Picker */}
+                        <EmojiPicker
+                          isOpen={showEmojiPicker}
+                          onClose={() => setShowEmojiPicker(false)}
+                          onEmojiSelect={handleEmojiSelect}
+                          buttonRef={emojiButtonRef}
+                        />
+                      </div>
                     </div>
 
                     <button

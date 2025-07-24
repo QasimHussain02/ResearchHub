@@ -16,6 +16,7 @@ import {
   setDoc,
   deleteDoc,
   serverTimestamp,
+  limit,
 } from "firebase/firestore";
 
 let docRef = collection(db, "posts");
@@ -2081,69 +2082,215 @@ export const editMessage = async (messageId, newContent) => {
 };
 
 /**
- * Update user's online status - SIMPLE VERSION
+ * Update user's online status - IMPROVED VERSION
  */
 export const updateOnlineStatus = async (isOnline = true) => {
   try {
     const currentUser = auth.currentUser;
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log("❌ No current user for online status update");
+      return;
+    }
+
+    console.log(
+      `🔄 Updating online status for ${currentUser.uid} to:`,
+      isOnline
+    );
 
     const userDocRef = doc(db, "users", currentUser.uid);
-    await updateDoc(userDocRef, {
-      isOnline,
-      lastSeen: firebaseServerTimestamp(),
-    });
 
-    console.log("✅ Online status updated:", isOnline);
+    // Check if user document exists first
+    const userDoc = await getDoc(userDocRef);
+
+    if (userDoc.exists()) {
+      await updateDoc(userDocRef, {
+        isOnline: isOnline,
+        lastSeen: firebaseServerTimestamp(),
+        lastActivity: new Date().toISOString(), // Add readable timestamp
+      });
+      console.log("✅ Online status updated successfully:", isOnline);
+    } else {
+      console.log(
+        "⚠️ User document does not exist, cannot update online status"
+      );
+      // Optionally create the document with basic info
+      const userData = await getUserDataByUID(currentUser.uid);
+      if (userData) {
+        await updateDoc(userDocRef, {
+          isOnline: isOnline,
+          lastSeen: firebaseServerTimestamp(),
+          lastActivity: new Date().toISOString(),
+        });
+        console.log("✅ Created online status for existing user");
+      }
+    }
   } catch (error) {
     console.error("❌ Error updating online status:", error);
   }
 };
 
 /**
- * Get online status for multiple users - SIMPLE VERSION
+ * Get online status for multiple users - FIXED VERSION
  */
 export const getOnlineStatus = (userIds, setOnlineUsers) => {
   if (!userIds || userIds.length === 0) {
+    console.log("👁️ No user IDs provided for online status");
     setOnlineUsers({});
     return null;
   }
 
-  console.log("👁️ Setting up online status listeners for:", userIds);
+  console.log("👁️ Setting up online status listeners for users:", userIds);
 
-  const userRefs = userIds.map((id) => doc(db, "users", id));
+  const unsubscribes = [];
 
-  const unsubscribes = userRefs.map((userRef, index) =>
-    onSnapshot(
+  // Set up individual listeners for each user
+  userIds.forEach((userId) => {
+    if (!userId) {
+      console.warn("⚠️ Skipping undefined userId");
+      return;
+    }
+
+    const userRef = doc(db, "users", userId);
+
+    const unsubscribe = onSnapshot(
       userRef,
       (docSnap) => {
         if (docSnap.exists()) {
           const userData = docSnap.data();
-          const userId = userIds[index];
+          const isOnline = userData.isOnline || false;
+          const lastSeen = userData.lastSeen;
+
+          console.log(`👤 Online status for ${userId}:`, {
+            isOnline,
+            lastSeen: lastSeen?.toDate?.() || lastSeen,
+            lastActivity: userData.lastActivity,
+          });
+
+          // Check if user is actually online (recent activity)
+          let actuallyOnline = false;
+          if (isOnline && lastSeen) {
+            const lastSeenTime = lastSeen.toDate
+              ? lastSeen.toDate()
+              : new Date(lastSeen);
+            const now = new Date();
+            const timeDifference = now - lastSeenTime;
+            const fiveMinutesInMs = 5 * 60 * 1000; // 5 minutes
+
+            // Consider user online if they were active in the last 5 minutes
+            actuallyOnline = timeDifference < fiveMinutesInMs;
+
+            console.log(
+              `🕐 User ${userId} last seen ${Math.floor(
+                timeDifference / 1000
+              )}s ago, online: ${actuallyOnline}`
+            );
+          }
 
           setOnlineUsers((prev) => ({
             ...prev,
             [userId]: {
-              isOnline: userData.isOnline || false,
-              lastSeen: userData.lastSeen,
+              isOnline: actuallyOnline,
+              lastSeen: lastSeen,
+              rawOnlineStatus: isOnline, // Keep raw status for debugging
+              lastActivity: userData.lastActivity,
+            },
+          }));
+        } else {
+          console.log(`❌ User document not found for ${userId}`);
+          setOnlineUsers((prev) => ({
+            ...prev,
+            [userId]: {
+              isOnline: false,
+              lastSeen: null,
+              rawOnlineStatus: false,
             },
           }));
         }
       },
       (error) => {
         console.error(
-          "❌ Error getting online status for user:",
-          userIds[index],
+          `❌ Error getting online status for user ${userId}:`,
           error
         );
+        setOnlineUsers((prev) => ({
+          ...prev,
+          [userId]: {
+            isOnline: false,
+            lastSeen: null,
+            error: error.message,
+          },
+        }));
       }
-    )
-  );
+    );
+
+    unsubscribes.push(unsubscribe);
+  });
+
+  // Return cleanup function that unsubscribes all listeners
+  return () => {
+    console.log(
+      "🧹 Cleaning up online status listeners for",
+      userIds.length,
+      "users"
+    );
+    unsubscribes.forEach((unsubscribe) => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    });
+  };
+};
+
+/**
+ * Initialize online status when user logs in
+ */
+export const initializeOnlineStatus = async () => {
+  console.log("🚀 Initializing online status system");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.log("❌ No current user for online status initialization");
+    return;
+  }
+
+  // Set user as online
+  await updateOnlineStatus(true);
+
+  // Set up listeners for when user goes offline
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      console.log("📱 App went to background, setting offline");
+      updateOnlineStatus(false);
+    } else {
+      console.log("📱 App came to foreground, setting online");
+      updateOnlineStatus(true);
+    }
+  };
+
+  const handleBeforeUnload = () => {
+    console.log("🚪 User leaving page, setting offline");
+    updateOnlineStatus(false);
+  };
+
+  // Add event listeners
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("beforeunload", handleBeforeUnload);
+
+  // Update status every 2 minutes to keep it fresh
+  const statusInterval = setInterval(() => {
+    if (!document.hidden && auth.currentUser) {
+      console.log("🔄 Refreshing online status");
+      updateOnlineStatus(true);
+    }
+  }, 2 * 60 * 1000); // 2 minutes
 
   // Return cleanup function
   return () => {
-    console.log("🧹 Cleaning up online status listeners");
-    unsubscribes.forEach((unsubscribe) => unsubscribe());
+    console.log("🧹 Cleaning up online status system");
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("beforeunload", handleBeforeUnload);
+    clearInterval(statusInterval);
+    updateOnlineStatus(false);
   };
 };
 
@@ -2194,3 +2341,325 @@ export const testMessaging = async () => {
 
 // Export the test function so you can call it from console
 window.testMessaging = testMessaging;
+
+// Enhanced search function for posts
+export const searchPosts = async (searchTerm, filters = {}) => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return { success: true, results: [] };
+    }
+
+    const searchTermLower = searchTerm.toLowerCase().trim();
+
+    // Get all posts first (since Firestore doesn't support complex full-text search)
+    const postsQuery = query(docRef, orderBy("timeStamp", "desc"), limit(100));
+    const snapshot = await getDocs(postsQuery);
+
+    const allPosts = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Filter posts based on search term
+    const filteredPosts = allPosts.filter((post) => {
+      const title = (post.title || post.status || "").toLowerCase();
+      const description = (
+        post.description ||
+        post.excerpt ||
+        post.status ||
+        ""
+      ).toLowerCase();
+      const author = (post.currUser?.name || post.author || "").toLowerCase();
+      const tags = (post.tags || []).join(" ").toLowerCase();
+      const postType = (post.postType || post.type || "").toLowerCase();
+
+      // Check if search term matches any field
+      const matchesSearch =
+        title.includes(searchTermLower) ||
+        description.includes(searchTermLower) ||
+        author.includes(searchTermLower) ||
+        tags.includes(searchTermLower) ||
+        postType.includes(searchTermLower);
+
+      // Apply additional filters if provided
+      if (filters.postType && filters.postType !== "all") {
+        return (
+          matchesSearch &&
+          (post.postType === filters.postType || post.type === filters.postType)
+        );
+      }
+
+      return matchesSearch;
+    });
+
+    // Sort by relevance (title matches first, then description matches)
+    const sortedResults = filteredPosts.sort((a, b) => {
+      const aTitleMatch = (a.title || a.status || "")
+        .toLowerCase()
+        .includes(searchTermLower);
+      const bTitleMatch = (b.title || b.status || "")
+        .toLowerCase()
+        .includes(searchTermLower);
+
+      if (aTitleMatch && !bTitleMatch) return -1;
+      if (!aTitleMatch && bTitleMatch) return 1;
+
+      // If both or neither match title, sort by timestamp
+      const aTime = a.timeStamp?.seconds || 0;
+      const bTime = b.timeStamp?.seconds || 0;
+      return bTime - aTime;
+    });
+
+    return {
+      success: true,
+      results: sortedResults.slice(0, 20), // Limit to 20 results
+      total: sortedResults.length,
+    };
+  } catch (error) {
+    console.error("Error searching posts:", error);
+    return { success: false, error: error.message, results: [] };
+  }
+};
+
+// Search users/people
+export const searchUsers = async (searchTerm, filters = {}) => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return { success: true, results: [] };
+    }
+
+    const searchTermLower = searchTerm.toLowerCase().trim();
+
+    // Get all users (limited for performance)
+    const usersQuery = query(userRef, limit(100));
+    const snapshot = await getDocs(usersQuery);
+
+    const allUsers = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Filter users based on search term
+    const filteredUsers = allUsers.filter((user) => {
+      const name = (user.name || "").toLowerCase();
+      const email = (user.email || "").toLowerCase();
+      const bio = (user.bio || "").toLowerCase();
+      const institution = (user.institution || "").toLowerCase();
+      const interests = (user.interests || []).join(" ").toLowerCase();
+      const location = (user.location || "").toLowerCase();
+
+      return (
+        name.includes(searchTermLower) ||
+        email.includes(searchTermLower) ||
+        bio.includes(searchTermLower) ||
+        institution.includes(searchTermLower) ||
+        interests.includes(searchTermLower) ||
+        location.includes(searchTermLower)
+      );
+    });
+
+    // Sort by relevance (name matches first)
+    const sortedResults = filteredUsers.sort((a, b) => {
+      const aNameMatch = (a.name || "").toLowerCase().includes(searchTermLower);
+      const bNameMatch = (b.name || "").toLowerCase().includes(searchTermLower);
+
+      if (aNameMatch && !bNameMatch) return -1;
+      if (!aNameMatch && bNameMatch) return 1;
+
+      // Sort by follower count if available
+      const aFollowers = (a.followers || []).length;
+      const bFollowers = (b.followers || []).length;
+      return bFollowers - aFollowers;
+    });
+
+    return {
+      success: true,
+      results: sortedResults.slice(0, 15), // Limit to 15 results
+      total: sortedResults.length,
+    };
+  } catch (error) {
+    console.error("Error searching users:", error);
+    return { success: false, error: error.message, results: [] };
+  }
+};
+
+// Search for trending topics/tags
+export const searchTopics = async (searchTerm) => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return { success: true, results: [] };
+    }
+
+    const searchTermLower = searchTerm.toLowerCase().trim();
+
+    // Get all posts to extract tags
+    const postsQuery = query(docRef, limit(200));
+    const snapshot = await getDocs(postsQuery);
+
+    const allPosts = snapshot.docs.map((doc) => doc.data());
+
+    // Extract and count all tags
+    const tagCounts = {};
+    const topicPosts = {};
+
+    allPosts.forEach((post) => {
+      const tags = post.tags || [];
+      const postType = post.postType || post.type || "general";
+
+      tags.forEach((tag) => {
+        const tagLower = tag.toLowerCase();
+        if (tagLower.includes(searchTermLower)) {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+
+          if (!topicPosts[tag]) {
+            topicPosts[tag] = [];
+          }
+          topicPosts[tag].push({
+            id: post.id || Math.random().toString(),
+            title: post.title || post.status,
+            author: post.currUser?.name || post.author,
+            type: postType,
+          });
+        }
+      });
+    });
+
+    // Convert to array and sort by count
+    const sortedTopics = Object.entries(tagCounts)
+      .map(([tag, count]) => ({
+        tag,
+        count,
+        posts: topicPosts[tag] || [],
+        relatedPostsCount: topicPosts[tag]?.length || 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      success: true,
+      results: sortedTopics,
+      total: sortedTopics.length,
+    };
+  } catch (error) {
+    console.error("Error searching topics:", error);
+    return { success: false, error: error.message, results: [] };
+  }
+};
+
+// Combined search function
+export const performGlobalSearch = async (searchTerm, category = "all") => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return {
+        success: true,
+        posts: [],
+        users: [],
+        topics: [],
+        total: 0,
+      };
+    }
+
+    const searchPromises = [];
+
+    if (category === "all" || category === "posts") {
+      searchPromises.push(searchPosts(searchTerm));
+    } else {
+      searchPromises.push(Promise.resolve({ success: true, results: [] }));
+    }
+
+    if (category === "all" || category === "people") {
+      searchPromises.push(searchUsers(searchTerm));
+    } else {
+      searchPromises.push(Promise.resolve({ success: true, results: [] }));
+    }
+
+    if (category === "all" || category === "topics") {
+      searchPromises.push(searchTopics(searchTerm));
+    } else {
+      searchPromises.push(Promise.resolve({ success: true, results: [] }));
+    }
+
+    const [postsResult, usersResult, topicsResult] = await Promise.all(
+      searchPromises
+    );
+
+    const totalResults =
+      (postsResult.results?.length || 0) +
+      (usersResult.results?.length || 0) +
+      (topicsResult.results?.length || 0);
+
+    return {
+      success: true,
+      posts: postsResult.results || [],
+      users: usersResult.results || [],
+      topics: topicsResult.results || [],
+      total: totalResults,
+      searchTerm,
+    };
+  } catch (error) {
+    console.error("Error performing global search:", error);
+    return {
+      success: false,
+      error: error.message,
+      posts: [],
+      users: [],
+      topics: [],
+      total: 0,
+    };
+  }
+};
+
+// Real-time search suggestions (for autocomplete)
+export const getSearchSuggestions = async (searchTerm) => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 1) {
+      return { success: true, suggestions: [] };
+    }
+
+    const searchTermLower = searchTerm.toLowerCase().trim();
+
+    // Get recent posts for title suggestions
+    const postsQuery = query(docRef, orderBy("timeStamp", "desc"), limit(50));
+    const postsSnapshot = await getDocs(postsQuery);
+
+    // Get users for name suggestions
+    const usersQuery = query(userRef, limit(50));
+    const usersSnapshot = await getDocs(usersQuery);
+
+    const suggestions = new Set();
+
+    // Add post titles that match
+    postsSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const title = data.title || data.status || "";
+      if (title.toLowerCase().includes(searchTermLower)) {
+        suggestions.add(title);
+      }
+
+      // Add tags that match
+      const tags = data.tags || [];
+      tags.forEach((tag) => {
+        if (tag.toLowerCase().includes(searchTermLower)) {
+          suggestions.add(tag);
+        }
+      });
+    });
+
+    // Add user names that match
+    usersSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const name = data.name || "";
+      if (name.toLowerCase().includes(searchTermLower)) {
+        suggestions.add(name);
+      }
+    });
+
+    return {
+      success: true,
+      suggestions: Array.from(suggestions).slice(0, 8), // Limit to 8 suggestions
+    };
+  } catch (error) {
+    console.error("Error getting search suggestions:", error);
+    return { success: false, suggestions: [] };
+  }
+};

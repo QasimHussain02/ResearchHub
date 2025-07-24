@@ -1,3 +1,5 @@
+// Update your src/Routes/index.jsx with this content
+
 import { createBrowserRouter } from "react-router-dom";
 import Login from "../pages/Login";
 import Signup from "../pages/Signup";
@@ -6,6 +8,7 @@ import CreatePost from "../pages/CreatePost";
 import Profile from "../pages/Profile";
 import People from "../pages/People";
 import Messages from "../pages/Messages";
+import SearchResults from "../pages/SearchResults";
 
 export const router = createBrowserRouter([
   {
@@ -43,5 +46,10 @@ export const router = createBrowserRouter([
   {
     path: "/messages",
     element: <Messages />,
+  },
+  // New search route
+  {
+    path: "/search",
+    element: <SearchResults />,
   },
 ]);
