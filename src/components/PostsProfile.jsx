@@ -3,6 +3,7 @@ import {
   getStatus,
   toggleLikeWithNotification,
   getUserDataByUID,
+  deletePost, // Add this import
 } from "../api/FireStore";
 
 import { auth, db } from "../firebaseConfig";
@@ -14,6 +15,8 @@ import {
   Download,
   Eye,
   Loader2,
+  MoreVertical, // Add this import
+  Trash2, // Add this import
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LikesModal from "./LikesModal";
@@ -37,6 +40,16 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   });
   const [likingStates, setLikingStates] = useState({});
   const [userProfiles, setUserProfiles] = useState({});
+
+  // NEW: Add these states for delete functionality
+  const [deletingStates, setDeletingStates] = useState({});
+  const [showDeleteModal, setShowDeleteModal] = useState({
+    isOpen: false,
+    postId: null,
+    postTitle: "",
+  });
+  const [showDropdown, setShowDropdown] = useState({});
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,10 +79,7 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     }
   }, [posts, currentUser]);
 
-  // FIND THE LAST useEffect (around line 50-60)
-  // ADD THIS NEW useEffect RIGHT AFTER THE EXISTING ONES:
-
-  // NEW: Load user profiles for all post authors when posts change
+  // Load user profiles for all post authors when posts change
   useEffect(() => {
     if (!userPosts || userPosts.length === 0) return;
 
@@ -103,7 +113,7 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     loadUserProfiles();
   }, [userPosts]);
 
-  // NEW: Set up real-time listeners for user profiles
+  // Set up real-time listeners for user profiles
   useEffect(() => {
     if (!userPosts || userPosts.length === 0) return;
 
@@ -142,8 +152,17 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     };
   }, [userPosts]);
 
-  // FIND THE getPostTypeStyle FUNCTION (around line 80)
-  // ADD THESE FUNCTIONS RIGHT BEFORE IT:
+  // NEW: Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowDropdown({});
+    };
+
+    document.addEventListener("click", handleClickOutside);
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, []);
 
   // Helper functions for profile management
   const getProfileInitials = (name) => {
@@ -265,6 +284,7 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       </div>
     );
   };
+
   const getPostTypeStyle = (type) => {
     switch (type) {
       case "research-paper":
@@ -289,6 +309,66 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       default:
         return "Post";
     }
+  };
+
+  // NEW: Delete functions
+  const canDeletePost = (post) => {
+    if (!auth.currentUser) return false;
+
+    return (
+      post.currUser?.uid === auth.currentUser.uid ||
+      post.authorId === auth.currentUser.uid ||
+      post.currUser?.email === auth.currentUser.email
+    );
+  };
+
+  const handleDeleteClick = (post) => {
+    setShowDeleteModal({
+      isOpen: true,
+      postId: post.id,
+      postTitle: post.title || post.status || "this post",
+    });
+    // Close dropdown
+    setShowDropdown({});
+  };
+
+  const handleDeleteConfirm = async () => {
+    const { postId } = showDeleteModal;
+
+    if (!postId) return;
+
+    setDeletingStates((prev) => ({ ...prev, [postId]: true }));
+
+    try {
+      const result = await deletePost(postId);
+
+      if (result.success) {
+        console.log("Post deleted successfully");
+        // Close modal
+        setShowDeleteModal({ isOpen: false, postId: null, postTitle: "" });
+        // Show success message
+        alert("Post deleted successfully!");
+      } else {
+        console.error("Failed to delete post:", result.error);
+        alert(result.error || "Failed to delete post. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      alert("An error occurred while deleting the post. Please try again.");
+    } finally {
+      setDeletingStates((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal({ isOpen: false, postId: null, postTitle: "" });
+  };
+
+  const toggleDropdown = (postId) => {
+    setShowDropdown((prev) => ({
+      ...prev,
+      [postId]: !prev[postId],
+    }));
   };
 
   const handleLike = async (postId) => {
@@ -414,6 +494,52 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
         totalComments={commentsModal.totalComments}
       />
 
+      {/* NEW: Delete Confirmation Modal */}
+      {showDeleteModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                Delete Post
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete "{showDeleteModal.postTitle}"?
+                This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleDeleteCancel}
+                  className="px-6 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                  disabled={deletingStates[showDeleteModal.postId]}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  disabled={deletingStates[showDeleteModal.postId]}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingStates[showDeleteModal.postId] ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-6">
         {userPosts.length === 0 ? (
           <div className="text-center text-gray-500 text-lg font-medium py-20">
@@ -445,7 +571,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
               {/* Post Header */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-4">
-                  {/* Use centralized ProfileAvatar component */}
                   <UserAvatar
                     post={post}
                     size="lg"
@@ -467,13 +592,44 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                     </p>
                   </div>
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
-                    post.postType || post.type
-                  )}`}
-                >
-                  {getPostTypeLabel(post.postType || post.type)}
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
+                      post.postType || post.type
+                    )}`}
+                  >
+                    {getPostTypeLabel(post.postType || post.type)}
+                  </span>
+
+                  {/* NEW: Three-dot menu for post options */}
+                  {canDeletePost(post) && (
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleDropdown(post.id);
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                      >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {showDropdown[post.id] && (
+                        <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                          <button
+                            onClick={() => handleDeleteClick(post)}
+                            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Post Content */}
@@ -590,7 +746,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                         className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
                       >
                         <Download className="w-4 h-4" />
-                        <span>Download PDF</span>
                       </button>
                     )}
 

@@ -3601,3 +3601,50 @@ export const addCommentWithNotification = async (postId, commentText) => {
     return { success: false, error: error.message };
   }
 };
+
+// Add this function to your existing FireStore.jsx file
+
+/**
+ * Delete a post from Firestore
+ */
+export const deletePost = async (postId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to delete posts");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+
+    // Check if the current user is the author of the post
+    const canDelete =
+      postData.currUser?.uid === currentUser.uid ||
+      postData.authorId === currentUser.uid ||
+      postData.currUser?.email === currentUser.email;
+
+    if (!canDelete) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this post",
+      };
+    }
+
+    // Delete the post document
+    await deleteDoc(postRef);
+
+    console.log("Post deleted successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    return { success: false, error: error.message };
+  }
+};

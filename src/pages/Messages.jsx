@@ -766,6 +766,7 @@ const Messages = () => {
                 {/* Message Input */}
                 <div className="p-3 sm:p-4 border-t border-gray-200 flex-shrink-0">
                   <div className="flex items-end space-x-2">
+                    wwwww{" "}
                     <div className="flex-1 relative">
                       <textarea
                         ref={textareaRef}
@@ -807,7 +808,6 @@ const Messages = () => {
                         />
                       </div>
                     </div>
-
                     <button
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim() || sendingMessage}
