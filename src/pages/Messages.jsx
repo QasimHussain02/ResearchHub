@@ -28,6 +28,7 @@ import {
   getOnlineStatus,
   updateOnlineStatus,
   getOrCreateConversation,
+  getUserDataByUID, // Add this import
 } from "../api/FireStore";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -47,6 +48,9 @@ const Messages = () => {
   const [messages, setMessages] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [editingMessage, setEditingMessage] = useState(null);
+
+  // NEW: Store participant profile data
+  const [participantProfiles, setParticipantProfiles] = useState({});
 
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -91,6 +95,42 @@ const Messages = () => {
       }
     };
   }, [currentUser]);
+
+  // NEW: Load participant profile data when conversations change
+  useEffect(() => {
+    if (!conversations || conversations.length === 0) return;
+
+    const loadParticipantProfiles = async () => {
+      console.log("Loading participant profiles...");
+      const profilesMap = {};
+
+      // Get all unique participant IDs
+      const participantIds = conversations.map(
+        (conv) => conv.otherParticipant.id
+      );
+      const uniqueParticipantIds = [...new Set(participantIds)];
+
+      // Load profile data for each participant
+      const profilePromises = uniqueParticipantIds.map(
+        async (participantId) => {
+          try {
+            const profileData = await getUserDataByUID(participantId);
+            if (profileData) {
+              profilesMap[participantId] = profileData;
+            }
+          } catch (error) {
+            console.error(`Error loading profile for ${participantId}:`, error);
+          }
+        }
+      );
+
+      await Promise.all(profilePromises);
+      console.log("Loaded participant profiles:", profilesMap);
+      setParticipantProfiles(profilesMap);
+    };
+
+    loadParticipantProfiles();
+  }, [conversations]);
 
   // Load messages for selected chat
   useEffect(() => {
@@ -320,6 +360,66 @@ const Messages = () => {
       .substring(0, 2);
   };
 
+  // NEW: Get profile picture for a user
+  const getProfilePicture = (userId) => {
+    const profile = participantProfiles[userId];
+    return profile?.photoURL || null;
+  };
+
+  // NEW: Enhanced avatar component
+  const UserAvatar = ({
+    userId,
+    name,
+    size = "default",
+    showOnline = false,
+  }) => {
+    const profilePic = getProfilePicture(userId);
+    const sizeClasses = {
+      small: "w-6 h-6",
+      default: "w-10 h-10 sm:w-12 sm:h-12",
+      large: "w-8 h-8 sm:w-10 sm:h-10",
+    };
+
+    const onlineSize = {
+      small: "w-2.5 h-2.5",
+      default: "w-3 h-3 sm:w-4 sm:h-4",
+      large: "w-2.5 h-2.5 sm:w-3 sm:h-3",
+    };
+
+    return (
+      <div className="relative flex-shrink-0">
+        <div
+          className={`${sizeClasses[size]} rounded-full flex items-center justify-center text-white font-semibold text-sm sm:text-base overflow-hidden`}
+        >
+          {profilePic ? (
+            <img
+              src={profilePic}
+              alt={name}
+              className="w-full h-full rounded-full object-cover"
+              onError={(e) => {
+                console.log("Image failed to load, falling back to initials");
+                e.target.style.display = "none";
+                e.target.nextSibling.style.display = "flex";
+              }}
+            />
+          ) : null}
+          <div
+            className={`w-full h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center ${
+              profilePic ? "hidden" : "flex"
+            }`}
+          >
+            {getInitials(name)}
+          </div>
+        </div>
+        {showOnline && isOnline(userId) && (
+          <div
+            className={`absolute -bottom-1 -right-1 ${onlineSize[size]} bg-green-500 border-2 border-white rounded-full`}
+          ></div>
+        )}
+      </div>
+    );
+  };
+
   const formatTime = (timestamp) => {
     if (!timestamp) return "";
 
@@ -412,23 +512,13 @@ const Messages = () => {
                     }`}
                   >
                     <div className="flex items-start space-x-3">
-                      {/* Avatar */}
-                      <div className="relative flex-shrink-0">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm sm:text-base bg-gradient-to-r from-blue-500 to-purple-600">
-                          {conversation.otherParticipant.avatar ? (
-                            <img
-                              src={conversation.otherParticipant.avatar}
-                              alt={conversation.otherParticipant.name}
-                              className="w-full h-full rounded-full object-cover"
-                            />
-                          ) : (
-                            getInitials(conversation.otherParticipant.name)
-                          )}
-                        </div>
-                        {isOnline(conversation.otherParticipant.id) && (
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                        )}
-                      </div>
+                      {/* Avatar with real profile picture */}
+                      <UserAvatar
+                        userId={conversation.otherParticipant.id}
+                        name={conversation.otherParticipant.name}
+                        size="default"
+                        showOnline={true}
+                      />
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
@@ -495,43 +585,19 @@ const Messages = () => {
                       <ArrowLeft className="h-5 w-5 text-gray-600" />
                     </button>
 
-                    <div className="relative flex-shrink-0">
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm bg-gradient-to-r from-blue-500 to-purple-600">
-                        {selectedChat.otherParticipant.avatar ? (
-                          <img
-                            src={selectedChat.otherParticipant.avatar}
-                            alt={selectedChat.otherParticipant.name}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          getInitials(selectedChat.otherParticipant.name)
-                        )}
-                      </div>
-                      {isOnline(selectedChat.otherParticipant.id) && (
-                        <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                      )}
-                    </div>
+                    {/* Avatar with real profile picture */}
+                    <UserAvatar
+                      userId={selectedChat.otherParticipant.id}
+                      name={selectedChat.otherParticipant.name}
+                      size="large"
+                      showOnline={true}
+                    />
 
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
                         {selectedChat.otherParticipant.name}
                       </h3>
                     </div>
-                  </div>
-
-                  <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors hidden sm:block">
-                      <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                    </button>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors hidden sm:block">
-                      <Video className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                    </button>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors">
-                      <Info className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                    </button>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors">
-                      <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                    </button>
                   </div>
                 </div>
 
@@ -561,19 +627,11 @@ const Messages = () => {
                           >
                             {/* Avatar for received messages */}
                             {!isCurrentUser && showAvatar && (
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white font-semibold text-xs bg-gradient-to-r from-blue-500 to-purple-600 flex-shrink-0">
-                                {selectedChat.otherParticipant.avatar ? (
-                                  <img
-                                    src={selectedChat.otherParticipant.avatar}
-                                    alt={selectedChat.otherParticipant.name}
-                                    className="w-full h-full rounded-full object-cover"
-                                  />
-                                ) : (
-                                  getInitials(
-                                    selectedChat.otherParticipant.name
-                                  )
-                                )}
-                              </div>
+                              <UserAvatar
+                                userId={selectedChat.otherParticipant.id}
+                                name={selectedChat.otherParticipant.name}
+                                size="small"
+                              />
                             )}
 
                             {!isCurrentUser && !showAvatar && (
@@ -708,10 +766,6 @@ const Messages = () => {
                 {/* Message Input */}
                 <div className="p-3 sm:p-4 border-t border-gray-200 flex-shrink-0">
                   <div className="flex items-end space-x-2">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 transition-colors flex-shrink-0 hidden sm:block">
-                      <Paperclip className="h-5 w-5 text-gray-600" />
-                    </button>
-
                     <div className="flex-1 relative">
                       <textarea
                         ref={textareaRef}

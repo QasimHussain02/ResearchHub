@@ -11,6 +11,7 @@ import {
   Reply,
 } from "lucide-react";
 import {
+  addCommentWithNotification,
   addComment,
   getPostComments,
   toggleCommentLike,
@@ -22,7 +23,9 @@ import {
   editReply,
 } from "../api/FireStore";
 import { auth } from "../firebaseConfig";
-
+import { getUserDataByUID } from "../api/FireStore";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 const CommentsModal = ({
   isOpen,
   onClose,
@@ -43,13 +46,103 @@ const CommentsModal = ({
   const [editingReply, setEditingReply] = useState(null);
   const [editReplyText, setEditReplyText] = useState("");
   const textareaRef = useRef(null);
-
+  const [userProfiles, setUserProfiles] = useState({});
   useEffect(() => {
     if (isOpen && postId) {
       fetchComments();
     }
   }, [isOpen, postId]);
+  // FIND THE FIRST useEffect (that fetches comments)
+  // ADD THIS NEW useEffect RIGHT AFTER IT:
 
+  // NEW: Load user profiles for comment authors
+  useEffect(() => {
+    if (!comments || comments.length === 0) return;
+
+    const loadUserProfiles = async () => {
+      console.log("Loading user profiles for comments...");
+      const profilesMap = { ...userProfiles };
+
+      // Get user IDs from comments and replies
+      const userIds = [];
+      comments.forEach((comment) => {
+        if (comment.uid && !profilesMap[comment.uid]) {
+          userIds.push(comment.uid);
+        }
+        if (comment.replies) {
+          comment.replies.forEach((reply) => {
+            if (reply.uid && !profilesMap[reply.uid]) {
+              userIds.push(reply.uid);
+            }
+          });
+        }
+      });
+
+      const uniqueUserIds = [...new Set(userIds)];
+      if (uniqueUserIds.length === 0) return;
+
+      const profilePromises = uniqueUserIds.map(async (userId) => {
+        try {
+          const profileData = await getUserDataByUID(userId);
+          if (profileData) {
+            profilesMap[userId] = profileData;
+          }
+        } catch (error) {
+          console.error(`Error loading profile for ${userId}:`, error);
+        }
+      });
+
+      await Promise.all(profilePromises);
+      setUserProfiles(profilesMap);
+    };
+
+    loadUserProfiles();
+  }, [comments]);
+
+  // NEW: Set up real-time listeners for comment user profiles
+  useEffect(() => {
+    if (!comments || comments.length === 0) return;
+
+    const userIds = [];
+    comments.forEach((comment) => {
+      if (comment.uid) userIds.push(comment.uid);
+      if (comment.replies) {
+        comment.replies.forEach((reply) => {
+          if (reply.uid) userIds.push(reply.uid);
+        });
+      }
+    });
+
+    const uniqueUserIds = [...new Set(userIds)];
+    if (uniqueUserIds.length === 0) return;
+
+    const unsubscribes = [];
+
+    uniqueUserIds.forEach((userId) => {
+      if (!userId) return;
+
+      const userRef = doc(db, "users", userId);
+      const unsubscribe = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = { id: docSnap.id, ...docSnap.data() };
+          setUserProfiles((prev) => ({
+            ...prev,
+            [userId]: userData,
+          }));
+        }
+      });
+
+      unsubscribes.push(unsubscribe);
+    });
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
+  }, [comments]);
   const fetchComments = async () => {
     setLoading(true);
     setError(null);
@@ -81,7 +174,7 @@ const CommentsModal = ({
     setSubmitting(true);
 
     try {
-      const result = await addComment(postId, newComment);
+      const result = await addCommentWithNotification(postId, newComment);
       if (result.success) {
         setNewComment("");
         await fetchComments(); // Refresh comments
@@ -286,7 +379,101 @@ const CommentsModal = ({
 
     return date.toLocaleDateString();
   };
+  // FIND THE getProfileInitials FUNCTION
+  // ADD THESE FUNCTIONS RIGHT BEFORE IT:
 
+  const getConsistentGradient = (identifier) => {
+    const gradients = [
+      "from-blue-500 to-purple-600",
+      "from-green-500 to-blue-600",
+      "from-purple-500 to-pink-600",
+      "from-yellow-500 to-red-600",
+      "from-indigo-500 to-purple-600",
+      "from-pink-500 to-rose-600",
+      "from-cyan-500 to-blue-600",
+      "from-emerald-500 to-teal-600",
+    ];
+
+    if (!identifier) return gradients[0];
+
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+      const char = identifier.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+  };
+
+  const getCurrentUserProfile = (userId) => {
+    return userProfiles[userId] || {};
+  };
+
+  const getProfileImageURL = (userId) => {
+    const profile = getCurrentUserProfile(userId);
+    return profile.photoURL || profile.profilePicture || null;
+  };
+
+  const getUserDisplayName = (userId, fallbackName) => {
+    const profile = getCurrentUserProfile(userId);
+    return profile.name || fallbackName || "Anonymous";
+  };
+
+  // UserAvatar component for comments
+  const CommentUserAvatar = ({ userId, fallbackName, size = "md" }) => {
+    const profile = getCurrentUserProfile(userId);
+    const profileImageURL = getProfileImageURL(userId);
+    const displayName = getUserDisplayName(userId, fallbackName);
+
+    const sizeClasses = {
+      sm: "w-6 h-6 text-xs",
+      md: "w-8 h-8 text-xs",
+      lg: "w-10 h-10 text-sm",
+    };
+
+    const sizeClass = sizeClasses[size] || sizeClasses.md;
+    const gradient = getConsistentGradient(userId || displayName);
+
+    return (
+      <div
+        className={`${sizeClass} rounded-full overflow-hidden flex-shrink-0 relative`}
+      >
+        {profileImageURL ? (
+          <>
+            <img
+              key={`comment-${userId}-${profileImageURL}-${
+                profile.updatedAt || Date.now()
+              }`}
+              src={profileImageURL}
+              alt={displayName}
+              className="w-full h-full rounded-full object-cover"
+              onError={(e) => {
+                e.target.style.display = "none";
+                const initialsDiv = e.target.nextElementSibling;
+                if (initialsDiv) {
+                  initialsDiv.style.display = "flex";
+                }
+              }}
+            />
+            <div
+              className={`absolute inset-0 w-full h-full bg-gradient-to-r ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+              style={{ display: "none" }}
+            >
+              {getProfileInitials(displayName)}
+            </div>
+          </>
+        ) : (
+          <div
+            className={`w-full h-full bg-gradient-to-r ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+          >
+            {getProfileInitials(displayName)}
+          </div>
+        )}
+      </div>
+    );
+  };
   const getProfileInitials = (name) => {
     if (!name) return "U";
     return name
@@ -374,16 +561,18 @@ const CommentsModal = ({
                   {/* Main Comment */}
                   <div className="flex space-x-3">
                     {/* Avatar */}
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                      {getProfileInitials(comment.author)}
-                    </div>
+                    <CommentUserAvatar
+                      userId={comment.uid}
+                      fallbackName={comment.author}
+                      size="md"
+                    />
 
                     {/* Comment Content */}
                     <div className="flex-1 min-w-0">
                       <div className="bg-gray-50 rounded-lg px-3 py-2">
                         <div className="flex items-center justify-between mb-1">
                           <h4 className="font-medium text-sm text-gray-900">
-                            {comment.author || "Anonymous"}
+                            {getUserDisplayName(comment.uid, comment.author)}
                           </h4>
 
                           {/* Comment Options */}
@@ -550,16 +739,20 @@ const CommentsModal = ({
                           {comment.replies.map((reply) => (
                             <div key={reply.id} className="flex space-x-2">
                               {/* Reply Avatar */}
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                                {getProfileInitials(reply.author)}
-                              </div>
-
+                              <CommentUserAvatar
+                                userId={reply.uid}
+                                fallbackName={reply.author}
+                                size="sm"
+                              />
                               {/* Reply Content */}
                               <div className="flex-1 min-w-0">
                                 <div className="bg-blue-50 rounded-lg px-3 py-2">
                                   <div className="flex items-center justify-between mb-1">
                                     <h5 className="font-medium text-sm text-gray-900">
-                                      {reply.author || "Anonymous"}
+                                      {getUserDisplayName(
+                                        reply.uid,
+                                        reply.author
+                                      )}
                                     </h5>
 
                                     {/* Reply Options */}

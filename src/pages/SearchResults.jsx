@@ -21,8 +21,10 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import Navbar from "../common/navbar";
-import { performGlobalSearch } from "../api/FireStore";
+import { performGlobalSearch, getUserDataByUID } from "../api/FireStore";
 import { auth } from "../firebaseConfig";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 
 const SearchResults = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,6 +39,7 @@ const SearchResults = () => {
   });
   const [activeFilter, setActiveFilter] = useState("all");
   const [sortBy, setSortBy] = useState("relevance");
+  const [userProfiles, setUserProfiles] = useState({});
 
   const query = searchParams.get("q") || "";
   const category = searchParams.get("category") || "all";
@@ -46,7 +49,92 @@ const SearchResults = () => {
       performSearch(query, category);
     }
   }, [query, category]);
+  // FIND THE FIRST useEffect (around line 25)
+  // ADD THIS NEW useEffect RIGHT AFTER IT:
 
+  // NEW: Load user profiles for search results
+  useEffect(() => {
+    if (!searchResults.posts.length && !searchResults.users.length) return;
+
+    const loadUserProfiles = async () => {
+      console.log("Loading user profiles for search results...");
+      const profilesMap = { ...userProfiles };
+
+      // Get user IDs from posts
+      const postUserIds = searchResults.posts
+        .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+        .filter((id) => id && !profilesMap[id]);
+
+      // Get user IDs from user results
+      const userIds = searchResults.users
+        .map((user) => user.id)
+        .filter((id) => id && !profilesMap[id]);
+
+      const allUserIds = [...new Set([...postUserIds, ...userIds])];
+
+      if (allUserIds.length === 0) return;
+
+      const profilePromises = allUserIds.map(async (userId) => {
+        try {
+          const profileData = await getUserDataByUID(userId);
+          if (profileData) {
+            profilesMap[userId] = profileData;
+          }
+        } catch (error) {
+          console.error(`Error loading profile for ${userId}:`, error);
+        }
+      });
+
+      await Promise.all(profilePromises);
+      setUserProfiles(profilesMap);
+    };
+
+    loadUserProfiles();
+  }, [searchResults]);
+
+  // NEW: Set up real-time listeners for search user profiles
+  useEffect(() => {
+    if (!searchResults.posts.length && !searchResults.users.length) return;
+
+    const postUserIds = searchResults.posts
+      .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+      .filter((id) => id);
+
+    const userIds = searchResults.users
+      .map((user) => user.id)
+      .filter((id) => id);
+
+    const allUserIds = [...new Set([...postUserIds, ...userIds])];
+
+    if (allUserIds.length === 0) return;
+
+    const unsubscribes = [];
+
+    allUserIds.forEach((userId) => {
+      if (!userId) return;
+
+      const userRef = doc(db, "users", userId);
+      const unsubscribe = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = { id: docSnap.id, ...docSnap.data() };
+          setUserProfiles((prev) => ({
+            ...prev,
+            [userId]: userData,
+          }));
+        }
+      });
+
+      unsubscribes.push(unsubscribe);
+    });
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
+  }, [searchResults]);
   const performSearch = async (searchTerm, searchCategory = "all") => {
     setLoading(true);
     try {
@@ -102,6 +190,103 @@ const SearchResults = () => {
       default:
         return "Post";
     }
+  };
+
+  // FIND THE getInitials FUNCTION (around line 110)
+  // ADD THESE FUNCTIONS RIGHT BEFORE IT:
+
+  const getConsistentGradient = (identifier) => {
+    const gradients = [
+      "from-blue-500 to-purple-600",
+      "from-green-500 to-blue-600",
+      "from-purple-500 to-pink-600",
+      "from-yellow-500 to-red-600",
+      "from-indigo-500 to-purple-600",
+      "from-pink-500 to-rose-600",
+      "from-cyan-500 to-blue-600",
+      "from-emerald-500 to-teal-600",
+    ];
+
+    if (!identifier) return gradients[0];
+
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+      const char = identifier.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+  };
+
+  const getCurrentUserProfile = (userId) => {
+    return userProfiles[userId] || {};
+  };
+
+  const getProfileImageURL = (userId) => {
+    const profile = getCurrentUserProfile(userId);
+    return profile.photoURL || profile.profilePicture || null;
+  };
+
+  const getUserDisplayName = (userId, fallbackName) => {
+    const profile = getCurrentUserProfile(userId);
+    return profile.name || fallbackName || "Anonymous";
+  };
+
+  // UserAvatar component for search results
+  const UserAvatar = ({ userId, fallbackName, size = "md", onClick }) => {
+    const profile = getCurrentUserProfile(userId);
+    const profileImageURL = getProfileImageURL(userId);
+    const displayName = getUserDisplayName(userId, fallbackName);
+
+    const sizeClasses = {
+      sm: "w-8 h-8 text-sm",
+      md: "w-10 h-10 text-sm",
+      lg: "w-12 h-12 text-base",
+    };
+
+    const sizeClass = sizeClasses[size] || sizeClasses.md;
+    const gradient = getConsistentGradient(userId || displayName);
+
+    return (
+      <div
+        onClick={onClick}
+        className={`${sizeClass} rounded-full overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 flex-shrink-0 relative`}
+      >
+        {profileImageURL ? (
+          <>
+            <img
+              key={`search-${userId}-${profileImageURL}-${
+                profile.updatedAt || Date.now()
+              }`}
+              src={profileImageURL}
+              alt={displayName}
+              className="w-full h-full rounded-full object-cover"
+              onError={(e) => {
+                e.target.style.display = "none";
+                const initialsDiv = e.target.nextElementSibling;
+                if (initialsDiv) {
+                  initialsDiv.style.display = "flex";
+                }
+              }}
+            />
+            <div
+              className={`absolute inset-0 w-full h-full bg-gradient-to-r ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+              style={{ display: "none" }}
+            >
+              {getInitials(displayName)}
+            </div>
+          </>
+        ) : (
+          <div
+            className={`w-full h-full bg-gradient-to-r ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+          >
+            {getInitials(displayName)}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const getInitials = (name) => {
@@ -318,14 +503,14 @@ const SearchResults = () => {
                       {/* Post Header */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-3">
-                          <div
+                          <UserAvatar
+                            userId={post.currUser?.uid || post.currUser?.id}
+                            fallbackName={post.currUser?.name || post.author}
+                            size="md"
                             onClick={() =>
                               handleProfileClick(post.currUser?.id)
                             }
-                            className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm cursor-pointer"
-                          >
-                            {getInitials(post.currUser?.name || post.author)}
-                          </div>
+                          />
                           <div>
                             <button
                               onClick={() =>
@@ -333,9 +518,10 @@ const SearchResults = () => {
                               }
                               className="font-medium text-gray-900 hover:text-blue-600 hover:underline"
                             >
-                              {post.currUser?.name ||
-                                post.author ||
-                                "Anonymous"}
+                              {getUserDisplayName(
+                                post.currUser?.uid || post.currUser?.id,
+                                post.currUser?.name || post.author
+                              )}
                             </button>
                             <p className="text-sm text-gray-500">
                               {formatTimeAgo(post.timeStamp)}
@@ -412,18 +598,18 @@ const SearchResults = () => {
                       className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-start space-x-4">
-                        <div
+                        <UserAvatar
+                          userId={user.id}
+                          fallbackName={user.name}
+                          size="lg"
                           onClick={() => handleProfileClick(user.id)}
-                          className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold cursor-pointer"
-                        >
-                          {getInitials(user.name)}
-                        </div>
+                        />
                         <div className="flex-1 min-w-0">
                           <button
                             onClick={() => handleProfileClick(user.id)}
                             className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
                           >
-                            {user.name}
+                            {getUserDisplayName(user.id, user.name)}
                           </button>
                           <p className="text-sm text-gray-500 mb-2">
                             @{user.email?.split("@")[0]}

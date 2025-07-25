@@ -2663,3 +2663,941 @@ export const getSearchSuggestions = async (searchTerm) => {
     return { success: false, suggestions: [] };
   }
 };
+
+// Add these enhanced functions to your existing FireStore.jsx file
+
+/**
+ * Real-time user profile listener - for getting live updates of profile changes
+ */
+export const getUserProfileRealtime = (userId, setUserProfile) => {
+  if (!userId) {
+    console.error("No user ID provided for real-time profile");
+    setUserProfile(null);
+    return null;
+  }
+
+  console.log("Setting up real-time profile listener for:", userId);
+
+  const userDocRef = doc(userRef, userId);
+
+  const unsubscribe = onSnapshot(
+    userDocRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = { id: docSnap.id, ...docSnap.data() };
+        console.log("Profile updated for user:", userId, userData);
+        setUserProfile(userData);
+      } else {
+        console.log("User profile not found for:", userId);
+        setUserProfile(null);
+      }
+    },
+    (error) => {
+      console.error("Error in real-time profile listener:", error);
+      setUserProfile(null);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Get multiple users' profile data with real-time updates
+ */
+export const getMultipleUsersRealtime = (userIds, setUsersProfiles) => {
+  if (!userIds || userIds.length === 0) {
+    console.log("No user IDs provided for multiple users real-time");
+    setUsersProfiles({});
+    return null;
+  }
+
+  console.log("Setting up real-time listeners for multiple users:", userIds);
+
+  const unsubscribes = [];
+  const profilesMap = {};
+
+  // Set up individual listeners for each user
+  userIds.forEach((userId) => {
+    if (!userId) {
+      console.warn("Skipping undefined userId in multiple users listener");
+      return;
+    }
+
+    const userRef = doc(db, "users", userId);
+
+    const unsubscribe = onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = { id: docSnap.id, ...docSnap.data() };
+          console.log(`Profile updated for user ${userId}:`, userData);
+
+          profilesMap[userId] = userData;
+
+          // Update the state with the new profiles map
+          setUsersProfiles((prev) => ({
+            ...prev,
+            [userId]: userData,
+          }));
+        } else {
+          console.log(`User profile not found for: ${userId}`);
+          // Remove from profiles if user no longer exists
+          setUsersProfiles((prev) => {
+            const updated = { ...prev };
+            delete updated[userId];
+            return updated;
+          });
+        }
+      },
+      (error) => {
+        console.error(
+          `Error in real-time profile listener for ${userId}:`,
+          error
+        );
+        // Remove from profiles on error
+        setUsersProfiles((prev) => {
+          const updated = { ...prev };
+          delete updated[userId];
+          return updated;
+        });
+      }
+    );
+
+    unsubscribes.push(unsubscribe);
+  });
+
+  // Return cleanup function that unsubscribes all listeners
+  return () => {
+    console.log(
+      "Cleaning up multiple users real-time listeners for",
+      userIds.length,
+      "users"
+    );
+    unsubscribes.forEach((unsubscribe) => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    });
+  };
+};
+
+/**
+ * Enhanced conversations listener that includes real-time profile data
+ */
+export const getConversationsWithProfiles = (setConversations) => {
+  console.log("🔄 Setting up enhanced conversations listener with profiles");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("❌ No current user for conversations");
+    setConversations([]);
+    return null;
+  }
+
+  console.log("👤 Current user for conversations:", currentUser.uid);
+
+  // Use simple query without composite index
+  const q = query(
+    conversationsRef,
+    where(`participant_${currentUser.uid}`, "==", true)
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    async (snapshot) => {
+      console.log("📨 Enhanced conversations snapshot received");
+      console.log("📊 Snapshot size:", snapshot.size);
+
+      const conversations = [];
+      const participantIds = new Set();
+
+      // First pass: collect all participant IDs
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const otherParticipantId = data.participants?.find(
+          (id) => id !== currentUser.uid
+        );
+        if (otherParticipantId) {
+          participantIds.add(otherParticipantId);
+        }
+      });
+
+      // Load all participant profile data
+      const participantProfiles = {};
+      const profilePromises = Array.from(participantIds).map(
+        async (participantId) => {
+          try {
+            const profileData = await getUserDataByUID(participantId);
+            if (profileData) {
+              participantProfiles[participantId] = profileData;
+            }
+          } catch (error) {
+            console.error(`Error loading profile for ${participantId}:`, error);
+          }
+        }
+      );
+
+      await Promise.all(profilePromises);
+
+      // Second pass: build conversations with profile data
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log("💬 Conversation doc:", doc.id, data);
+
+        const otherParticipantId = data.participants?.find(
+          (id) => id !== currentUser.uid
+        );
+        const otherParticipantName =
+          data.participantNames?.[otherParticipantId];
+
+        if (otherParticipantId && otherParticipantName) {
+          const participantProfile = participantProfiles[otherParticipantId];
+
+          conversations.push({
+            id: doc.id,
+            ...data,
+            otherParticipant: {
+              id: otherParticipantId,
+              name: otherParticipantName,
+              avatar: participantProfile?.photoURL || null,
+              profile: participantProfile || null,
+            },
+            unreadCount: data.unreadCount?.[currentUser.uid] || 0,
+          });
+        }
+      });
+
+      // Sort by updatedAt manually (no composite index needed)
+      conversations.sort((a, b) => {
+        const aTime = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(0);
+        const bTime = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(0);
+        return bTime - aTime;
+      });
+
+      console.log("✅ Processed enhanced conversations:", conversations.length);
+      setConversations(conversations);
+    },
+    (error) => {
+      console.error("❌ Error in enhanced conversations listener:", error);
+      setConversations([]);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Enhanced sendMessage that updates participant names in real-time
+ */
+export const sendMessageEnhanced = async (receiverId, content) => {
+  console.log("🚀 Starting enhanced sendMessage function");
+  console.log("Receiver ID:", receiverId);
+  console.log("Content:", content);
+
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("❌ No current user");
+      throw new Error("User not authenticated");
+    }
+
+    console.log("✅ Current user:", currentUser.uid);
+
+    // Get fresh user data to ensure names are up to date
+    const [senderData, receiverData] = await Promise.all([
+      getUserDataByUID(currentUser.uid),
+      getUserDataByUID(receiverId),
+    ]);
+
+    console.log("✅ Sender data:", senderData);
+    console.log("✅ Receiver data:", receiverData);
+
+    if (!senderData || !receiverData) {
+      console.error("❌ Missing user data");
+      throw new Error("User data not found");
+    }
+
+    const conversationId = createConversationId(currentUser.uid, receiverId);
+    console.log("✅ Conversation ID:", conversationId);
+
+    // Create message with fresh user data
+    const messageData = {
+      conversationId,
+      senderId: currentUser.uid,
+      receiverId,
+      content: content.trim(),
+      timestamp: firebaseServerTimestamp(),
+      clientTimestamp: new Date(),
+      status: "sent",
+      deleted: false,
+      senderName: senderData.name || "Unknown User",
+      receiverName: receiverData.name || "Unknown User",
+      // Add profile photos for immediate display
+      senderPhoto: senderData.photoURL || null,
+      receiverPhoto: receiverData.photoURL || null,
+      createdAt: firebaseServerTimestamp(),
+    };
+
+    console.log("📝 Enhanced message data:", messageData);
+
+    // Add message to Firestore
+    console.log("💾 Adding message to Firestore...");
+    const messageDocRef = await addDoc(messagesRef, messageData);
+    console.log("✅ Message added with ID:", messageDocRef.id);
+
+    // Create/update conversation with fresh profile data
+    const conversationData = {
+      participants: [currentUser.uid, receiverId],
+      participantNames: {
+        [currentUser.uid]: senderData.name || "Unknown User",
+        [receiverId]: receiverData.name || "Unknown User",
+      },
+      participantPhotos: {
+        [currentUser.uid]: senderData.photoURL || null,
+        [receiverId]: receiverData.photoURL || null,
+      },
+      lastMessage: {
+        content: content.trim(),
+        senderId: currentUser.uid,
+        timestamp: firebaseServerTimestamp(),
+        clientTimestamp: new Date(),
+      },
+      updatedAt: firebaseServerTimestamp(),
+      unreadCount: {
+        [currentUser.uid]: 0,
+        [receiverId]: 1,
+      },
+      [`participant_${currentUser.uid}`]: true,
+      [`participant_${receiverId}`]: true,
+    };
+
+    console.log("💬 Enhanced conversation data:", conversationData);
+
+    const conversationDocRef = doc(conversationsRef, conversationId);
+    const existingConv = await getDoc(conversationDocRef);
+
+    if (existingConv.exists()) {
+      console.log("📝 Updating existing conversation with fresh data...");
+      const existing = existingConv.data();
+      await updateDoc(conversationDocRef, {
+        // Update participant names and photos in case they changed
+        participantNames: conversationData.participantNames,
+        participantPhotos: conversationData.participantPhotos,
+        lastMessage: conversationData.lastMessage,
+        updatedAt: firebaseServerTimestamp(),
+        [`unreadCount.${receiverId}`]:
+          (existing.unreadCount?.[receiverId] || 0) + 1,
+        [`unreadCount.${currentUser.uid}`]: 0,
+      });
+      console.log("✅ Conversation updated with fresh profile data");
+    } else {
+      console.log("🆕 Creating new conversation with profile data...");
+      await setDoc(conversationDocRef, {
+        ...conversationData,
+        createdAt: firebaseServerTimestamp(),
+      });
+      console.log("✅ New conversation created with profile data");
+    }
+
+    console.log("🎉 Enhanced message sent successfully!");
+    return { success: true, messageId: messageDocRef.id, conversationId };
+  } catch (error) {
+    console.error("❌ Error in enhanced sendMessage:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Function to refresh conversation participant data
+ */
+export const refreshConversationParticipants = async (conversationId) => {
+  try {
+    console.log(
+      "🔄 Refreshing participant data for conversation:",
+      conversationId
+    );
+
+    const conversationRef = doc(conversationsRef, conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+
+    if (!conversationSnap.exists()) {
+      console.error("❌ Conversation not found");
+      return { success: false, error: "Conversation not found" };
+    }
+
+    const conversationData = conversationSnap.data();
+    const participants = conversationData.participants || [];
+
+    // Get fresh data for all participants
+    const participantUpdates = {};
+    const photoUpdates = {};
+
+    for (const participantId of participants) {
+      const userData = await getUserDataByUID(participantId);
+      if (userData) {
+        participantUpdates[participantId] = userData.name || "Unknown User";
+        photoUpdates[participantId] = userData.photoURL || null;
+      }
+    }
+
+    // Update conversation with fresh data
+    await updateDoc(conversationRef, {
+      participantNames: participantUpdates,
+      participantPhotos: photoUpdates,
+      updatedAt: firebaseServerTimestamp(),
+    });
+
+    console.log("✅ Conversation participant data refreshed");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error refreshing conversation participants:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Batch refresh all user conversations when profile is updated
+ */
+export const refreshAllUserConversations = async () => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("❌ No current user for refreshing conversations");
+      return { success: false, error: "User not authenticated" };
+    }
+
+    console.log("🔄 Refreshing all conversations for user:", currentUser.uid);
+
+    // Get all conversations for current user
+    const q = query(
+      conversationsRef,
+      where(`participant_${currentUser.uid}`, "==", true)
+    );
+    const snapshot = await getDocs(q);
+
+    // Refresh each conversation
+    const refreshPromises = snapshot.docs.map((doc) =>
+      refreshConversationParticipants(doc.id)
+    );
+
+    await Promise.all(refreshPromises);
+
+    console.log("✅ All conversations refreshed");
+    return { success: true, refreshedCount: snapshot.size };
+  } catch (error) {
+    console.error("❌ Error refreshing all conversations:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Enhanced editUser function that also updates conversations
+export const editUserWithConversationUpdate = async (payload) => {
+  console.log("🔄 Updating user with conversation refresh...");
+
+  // First update the user document
+  const userUpdateResult = await editUser(payload);
+
+  if (userUpdateResult.success) {
+    // If name or photo was updated, refresh all conversations
+    if (payload.name || payload.photoURL !== undefined) {
+      console.log("🔄 Profile data changed, refreshing conversations...");
+      await refreshAllUserConversations();
+    }
+  }
+
+  return userUpdateResult;
+};
+
+// Create notifications collection reference
+const notificationsRef = collection(db, "notifications");
+
+/**
+ * Create a notification when someone likes a post
+ */
+export const createLikeNotification = async (
+  postId,
+  postAuthorUID,
+  postTitle
+) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid === postAuthorUID) {
+      // Don't notify if liking own post
+      return { success: true };
+    }
+
+    // Get current user data for notification
+    const userData = await getUserDataByUID(currentUser.uid);
+    if (!userData) {
+      console.error("Could not get user data for notification");
+      return { success: false, error: "User data not found" };
+    }
+
+    // Create new notification with denormalized fields to avoid composite indexes
+    const notificationData = {
+      type: "like",
+      postId: postId,
+      postTitle: postTitle || "your post",
+      fromUID: currentUser.uid,
+      fromName: userData.name || "Someone",
+      fromPhoto: userData.photoURL || null,
+      toUID: postAuthorUID,
+      timestamp: serverTimestamp(),
+      clientTimestamp: new Date(), // Fallback for sorting
+      read: false,
+      createdAt: serverTimestamp(),
+      // Denormalized fields to avoid composite queries
+      [`recipient_${postAuthorUID}`]: true,
+      [`sender_${currentUser.uid}`]: true,
+      [`post_${postId}`]: true,
+    };
+
+    await addDoc(notificationsRef, notificationData);
+    console.log("Like notification created successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error creating like notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Create a notification when someone comments on a post
+ */
+export const createCommentNotification = async (
+  postId,
+  postAuthorUID,
+  postTitle,
+  commentText
+) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid === postAuthorUID) {
+      // Don't notify if commenting on own post
+      return { success: true };
+    }
+
+    // Get current user data for notification
+    const userData = await getUserDataByUID(currentUser.uid);
+    if (!userData) {
+      console.error("Could not get user data for notification");
+      return { success: false, error: "User data not found" };
+    }
+
+    // Create notification with denormalized fields
+    const notificationData = {
+      type: "comment",
+      postId: postId,
+      postTitle: postTitle || "your post",
+      commentText:
+        commentText.length > 100
+          ? commentText.substring(0, 100) + "..."
+          : commentText,
+      fromUID: currentUser.uid,
+      fromName: userData.name || "Someone",
+      fromPhoto: userData.photoURL || null,
+      toUID: postAuthorUID,
+      timestamp: serverTimestamp(),
+      clientTimestamp: new Date(),
+      read: false,
+      createdAt: serverTimestamp(),
+      // Denormalized fields
+      [`recipient_${postAuthorUID}`]: true,
+      [`sender_${currentUser.uid}`]: true,
+      [`post_${postId}`]: true,
+    };
+
+    await addDoc(notificationsRef, notificationData);
+    console.log("Comment notification created successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error creating comment notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Create a notification when someone follows you
+ */
+export const createFollowNotification = async (targetUID) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid === targetUID) {
+      return { success: true };
+    }
+
+    // Get current user data for notification
+    const userData = await getUserDataByUID(currentUser.uid);
+    if (!userData) {
+      console.error("Could not get user data for notification");
+      return { success: false, error: "User data not found" };
+    }
+
+    // Create new notification with denormalized fields
+    const notificationData = {
+      type: "follow",
+      fromUID: currentUser.uid,
+      fromName: userData.name || "Someone",
+      fromPhoto: userData.photoURL || null,
+      toUID: targetUID,
+      timestamp: serverTimestamp(),
+      clientTimestamp: new Date(),
+      read: false,
+      createdAt: serverTimestamp(),
+      // Denormalized fields
+      [`recipient_${targetUID}`]: true,
+      [`sender_${currentUser.uid}`]: true,
+    };
+
+    await addDoc(notificationsRef, notificationData);
+    console.log("Follow notification created successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error creating follow notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get notifications for current user with real-time updates - SIMPLIFIED VERSION
+ */
+export const getUsersNotifications = (setNotifications) => {
+  console.log("🔔 Setting up notifications listener");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("❌ No current user for notifications");
+    setNotifications([]);
+    return () => {}; // Return empty function to prevent errors
+  }
+
+  console.log("👤 Current user for notifications:", currentUser.uid);
+
+  // Use simple query without composite index - just filter by recipient
+  const q = query(
+    notificationsRef,
+    where(`recipient_${currentUser.uid}`, "==", true),
+    limit(50) // Limit to last 50 notifications for performance
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      console.log("📨 Notifications snapshot received");
+      console.log("📊 Notifications count:", snapshot.size);
+
+      const notifications = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log("🔔 Notification doc:", doc.id, data);
+
+        notifications.push({
+          id: doc.id,
+          ...data,
+          // Ensure we have a proper timestamp for sorting
+          timestamp:
+            data.timestamp?.toDate() || data.clientTimestamp || new Date(),
+        });
+      });
+
+      // Sort by timestamp manually (newest first)
+      notifications.sort((a, b) => {
+        const aTime =
+          a.timestamp instanceof Date ? a.timestamp : new Date(a.timestamp);
+        const bTime =
+          b.timestamp instanceof Date ? b.timestamp : new Date(b.timestamp);
+        return bTime.getTime() - aTime.getTime();
+      });
+
+      console.log("✅ Processed notifications:", notifications.length);
+      setNotifications(notifications);
+    },
+    (error) => {
+      console.error("❌ Error in notifications listener:", error);
+      setNotifications([]);
+    }
+  );
+
+  console.log("✅ Notifications listener set up successfully");
+  return unsubscribe; // Return the unsubscribe function
+};
+
+/**
+ * Get unread notifications count - SIMPLIFIED VERSION
+ */
+export const getUnreadNotificationsCount = (setUnreadCount) => {
+  console.log("🔔 Setting up unread notifications count listener");
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("❌ No current user for unread count");
+    setUnreadCount(0);
+    return () => {}; // Return empty function
+  }
+
+  // Use simple query without composite index
+  const q = query(
+    notificationsRef,
+    where(`recipient_${currentUser.uid}`, "==", true),
+    limit(100) // Limit for performance
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snapshot) => {
+      console.log("📊 Unread count snapshot received");
+
+      let unreadCount = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.read === false || data.read === undefined) {
+          unreadCount++;
+        }
+      });
+
+      console.log("📊 Total unread notifications:", unreadCount);
+      setUnreadCount(unreadCount);
+    },
+    (error) => {
+      console.error("❌ Error in unread count listener:", error);
+      setUnreadCount(0);
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * Mark notification as read
+ */
+export const markNotificationsAsRead = async (notificationId) => {
+  try {
+    console.log("✅ Marking notification as read:", notificationId);
+
+    const notificationRef = doc(notificationsRef, notificationId);
+    await updateDoc(notificationRef, {
+      read: true,
+      readAt: serverTimestamp(),
+    });
+
+    console.log("✅ Notification marked as read successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error marking notification as read:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete notification
+ */
+export const deleteNotification = async (notificationId) => {
+  try {
+    console.log("🗑️ Deleting notification:", notificationId);
+
+    await deleteDoc(doc(notificationsRef, notificationId));
+
+    console.log("✅ Notification deleted successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error deleting notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Remove like notification when user unlikes a post - SIMPLIFIED
+ */
+export const removeLikeNotification = async (postId, postAuthorUID) => {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return { success: true };
+
+    console.log("🗑️ Removing like notification for post:", postId);
+
+    // Find and delete the like notification using simple query
+    const q = query(
+      notificationsRef,
+      where(`recipient_${postAuthorUID}`, "==", true),
+      where(`sender_${currentUser.uid}`, "==", true),
+      where(`post_${postId}`, "==", true)
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    // Delete matching like notifications
+    const deletePromises = [];
+    querySnapshot.forEach((docSnapshot) => {
+      const data = docSnapshot.data();
+      if (
+        data.type === "like" &&
+        data.postId === postId &&
+        data.fromUID === currentUser.uid
+      ) {
+        deletePromises.push(deleteDoc(doc(notificationsRef, docSnapshot.id)));
+      }
+    });
+
+    await Promise.all(deletePromises);
+    console.log("✅ Like notification removed successfully");
+
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Error removing like notification:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Enhanced toggleLike function that creates/removes notifications
+ */
+export const toggleLikeWithNotification = async (postId) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to like posts");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+    const likedBy = postData.likedBy || [];
+    const isLiked = likedBy.some((like) => like.uid === currentUser.uid);
+
+    if (isLiked) {
+      // Unlike the post - remove the user's like object
+      const updatedLikedBy = likedBy.filter(
+        (like) => like.uid !== currentUser.uid
+      );
+      await updateDoc(postRef, {
+        likedBy: updatedLikedBy,
+        likes: Math.max(0, (postData.likes || 0) - 1),
+      });
+
+      // Remove like notification
+      const postAuthorUID = postData.currUser?.uid || postData.authorUID;
+      if (postAuthorUID && postAuthorUID !== currentUser.uid) {
+        await removeLikeNotification(postId, postAuthorUID);
+      }
+    } else {
+      // Like the post - get fresh user data and add like
+      const userData = await getUserDataByUID(currentUser.uid);
+
+      const userName =
+        userData?.name ||
+        currentUser.displayName ||
+        currentUser.email?.split("@")[0] ||
+        "User";
+
+      const likeObject = {
+        uid: currentUser.uid,
+        name: userName,
+        email: currentUser.email || "No email",
+        timestamp: new Date(),
+        userPhoto: userData?.photoURL || currentUser.photoURL,
+        userBio: userData?.bio || "",
+      };
+
+      await updateDoc(postRef, {
+        likedBy: arrayUnion(likeObject),
+        likes: (postData.likes || 0) + 1,
+      });
+
+      // Create like notification
+      const postAuthorUID = postData.currUser?.uid || postData.authorUID;
+      if (postAuthorUID && postAuthorUID !== currentUser.uid) {
+        await createLikeNotification(
+          postId,
+          postAuthorUID,
+          postData.title || postData.status
+        );
+      }
+    }
+
+    return { success: true, isLiked: !isLiked };
+  } catch (error) {
+    console.error("Error toggling like:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Enhanced addComment function that creates notifications
+ */
+export const addCommentWithNotification = async (postId, commentText) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("User must be logged in to comment");
+    return { success: false, error: "User not authenticated" };
+  }
+
+  try {
+    const postRef = doc(docRef, postId);
+    const postSnap = await getDoc(postRef);
+
+    if (!postSnap.exists()) {
+      console.error("Post not found");
+      return { success: false, error: "Post not found" };
+    }
+
+    const postData = postSnap.data();
+
+    // Get fresh user data
+    const userData = await getUserDataByUID(currentUser.uid);
+
+    const userEmail = currentUser.email || userData?.email || "";
+    const userName =
+      userData?.name ||
+      currentUser.displayName ||
+      (userEmail ? userEmail.split("@")[0] : "") ||
+      "Anonymous User";
+
+    // Create comment object
+    const commentObject = {
+      id: Date.now() + Math.random().toString(36).substring(2, 15),
+      text: commentText.trim(),
+      uid: currentUser.uid,
+      author: userName,
+      email: userEmail,
+      timestamp: new Date(),
+      likes: 0,
+      likedBy: [],
+      replies: [],
+      userPhoto: userData?.photoURL || currentUser.photoURL || "",
+    };
+
+    const currentComments = postData.comments || 0;
+    const commentsList = postData.commentsList || [];
+
+    // Update post with new comment
+    await updateDoc(postRef, {
+      comments: currentComments + 1,
+      commentsList: arrayUnion(commentObject),
+    });
+
+    // Create comment notification
+    const postAuthorUID = postData.currUser?.uid || postData.authorUID;
+    if (postAuthorUID && postAuthorUID !== currentUser.uid) {
+      await createCommentNotification(
+        postId,
+        postAuthorUID,
+        postData.title || postData.status,
+        commentText
+      );
+    }
+
+    console.log("Comment added successfully with notification:", commentObject);
+    return { success: true, comment: commentObject };
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    return { success: false, error: error.message };
+  }
+};

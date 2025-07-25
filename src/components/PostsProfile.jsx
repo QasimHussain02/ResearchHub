@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { getStatus, toggleLike } from "../api/FireStore";
-import { auth } from "../firebaseConfig";
+import {
+  getStatus,
+  toggleLikeWithNotification,
+  getUserDataByUID,
+} from "../api/FireStore";
+
+import { auth, db } from "../firebaseConfig";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
   Heart,
   MessageCircle,
@@ -9,10 +15,10 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
-import { ProfileAvatar, ProfileLink } from "../helper/ProfileNavigation";
+import { useNavigate } from "react-router-dom";
 import LikesModal from "./LikesModal";
 import CommentsModal from "../components/CommentsModal";
-import CommentPreview from "../components/CommentPreview";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   const [posts, setPosts] = useState([]);
@@ -30,6 +36,8 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     totalComments: 0,
   });
   const [likingStates, setLikingStates] = useState({});
+  const [userProfiles, setUserProfiles] = useState({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     setLoading(true);
@@ -58,6 +66,205 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     }
   }, [posts, currentUser]);
 
+  // FIND THE LAST useEffect (around line 50-60)
+  // ADD THIS NEW useEffect RIGHT AFTER THE EXISTING ONES:
+
+  // NEW: Load user profiles for all post authors when posts change
+  useEffect(() => {
+    if (!userPosts || userPosts.length === 0) return;
+
+    const loadUserProfiles = async () => {
+      console.log("Loading user profiles for profile posts...");
+      const profilesMap = { ...userProfiles };
+
+      const userIds = userPosts
+        .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+        .filter((id) => id && !profilesMap[id]);
+
+      const uniqueUserIds = [...new Set(userIds)];
+
+      if (uniqueUserIds.length === 0) return;
+
+      const profilePromises = uniqueUserIds.map(async (userId) => {
+        try {
+          const profileData = await getUserDataByUID(userId);
+          if (profileData) {
+            profilesMap[userId] = profileData;
+          }
+        } catch (error) {
+          console.error(`Error loading profile for ${userId}:`, error);
+        }
+      });
+
+      await Promise.all(profilePromises);
+      setUserProfiles(profilesMap);
+    };
+
+    loadUserProfiles();
+  }, [userPosts]);
+
+  // NEW: Set up real-time listeners for user profiles
+  useEffect(() => {
+    if (!userPosts || userPosts.length === 0) return;
+
+    const userIds = userPosts
+      .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+      .filter((id) => id);
+
+    const uniqueUserIds = [...new Set(userIds)];
+    if (uniqueUserIds.length === 0) return;
+
+    const unsubscribes = [];
+
+    uniqueUserIds.forEach((userId) => {
+      if (!userId) return;
+
+      const userRef = doc(db, "users", userId);
+      const unsubscribe = onSnapshot(userRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const userData = { id: docSnap.id, ...docSnap.data() };
+          setUserProfiles((prev) => ({
+            ...prev,
+            [userId]: userData,
+          }));
+        }
+      });
+
+      unsubscribes.push(unsubscribe);
+    });
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
+  }, [userPosts]);
+
+  // FIND THE getPostTypeStyle FUNCTION (around line 80)
+  // ADD THESE FUNCTIONS RIGHT BEFORE IT:
+
+  // Helper functions for profile management
+  const getProfileInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .filter((n) => n.length > 0)
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getConsistentGradient = (identifier) => {
+    const gradients = [
+      "from-blue-500 to-purple-600",
+      "from-green-500 to-blue-600",
+      "from-purple-500 to-pink-600",
+      "from-yellow-500 to-red-600",
+      "from-indigo-500 to-purple-600",
+      "from-pink-500 to-rose-600",
+      "from-cyan-500 to-blue-600",
+      "from-emerald-500 to-teal-600",
+    ];
+
+    if (!identifier) return gradients[0];
+
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+      const char = identifier.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+  };
+
+  const getCurrentUserProfile = (post) => {
+    const userId = post.currUser?.uid || post.currUser?.id || post.authorId;
+    return userProfiles[userId] || post.currUser || {};
+  };
+
+  const getProfileImageURL = (post) => {
+    const currentProfile = getCurrentUserProfile(post);
+    if (!currentProfile) return null;
+
+    return (
+      currentProfile.photoURL ||
+      currentProfile.profilePicture ||
+      post.currUser?.photoURL ||
+      null
+    );
+  };
+
+  const getUserDisplayName = (post) => {
+    const currentProfile = getCurrentUserProfile(post);
+    if (!currentProfile) return "Anonymous";
+
+    return (
+      currentProfile.name || post.currUser?.name || post.author || "Anonymous"
+    );
+  };
+
+  // UserAvatar component
+  const UserAvatar = ({ post, size = "lg", onClick }) => {
+    const currentProfile = getCurrentUserProfile(post);
+    const profileImageURL = getProfileImageURL(post);
+    const displayName = getUserDisplayName(post);
+    const userId =
+      post.currUser?.uid || post.currUser?.id || post.authorId || post.id;
+
+    const sizeClasses = {
+      sm: "w-8 h-8 text-sm",
+      md: "w-10 h-10 text-sm",
+      lg: "w-12 h-12 text-base",
+      xl: "w-16 h-16 text-lg",
+    };
+
+    const sizeClass = sizeClasses[size] || sizeClasses.lg;
+    const gradient = getConsistentGradient(userId || displayName);
+
+    return (
+      <div
+        onClick={onClick}
+        className={`${sizeClass} rounded-full overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 border-2 border-gray-100 hover:border-blue-200 flex-shrink-0 relative`}
+      >
+        {profileImageURL ? (
+          <>
+            <img
+              key={`profile-${userId}-${profileImageURL}-${
+                currentProfile.updatedAt || Date.now()
+              }`}
+              src={profileImageURL}
+              alt={displayName}
+              className="w-full h-full rounded-full object-cover"
+              onError={(e) => {
+                e.target.style.display = "none";
+                const initialsDiv = e.target.nextElementSibling;
+                if (initialsDiv) {
+                  initialsDiv.style.display = "flex";
+                }
+              }}
+            />
+            <div
+              className={`absolute inset-0 w-full h-full bg-gradient-to-br ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+              style={{ display: "none" }}
+            >
+              {getProfileInitials(displayName)}
+            </div>
+          </>
+        ) : (
+          <div
+            className={`w-full h-full bg-gradient-to-br ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+          >
+            {getProfileInitials(displayName)}
+          </div>
+        )}
+      </div>
+    );
+  };
   const getPostTypeStyle = (type) => {
     switch (type) {
       case "research-paper":
@@ -96,7 +303,7 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     setLikingStates((prev) => ({ ...prev, [postId]: true }));
 
     try {
-      const result = await toggleLike(postId);
+      const result = await toggleLikeWithNotification(postId);
 
       if (result.success) {
         // The posts will be updated automatically through the real-time listener
@@ -153,6 +360,14 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
       // Fallback - copy to clipboard
       navigator.clipboard.writeText(window.location.href);
       alert("Link copied to clipboard!");
+    }
+  };
+
+  const handleProfileClick = (post) => {
+    if (post.currUser?.id === auth.currentUser?.uid) {
+      navigate("/my-profile");
+    } else if (post.currUser?.id) {
+      navigate(`/profile/${post.currUser.id}`);
     }
   };
 
@@ -219,7 +434,9 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
         ) : (
           userPosts.map((post, index) => (
             <div
-              key={post.id}
+              key={`profile-post-${post.id}-${
+                getCurrentUserProfile(post).updatedAt || index
+              }`}
               className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300 animate-fade-in-up"
               style={{
                 animationDelay: `${index * 100}ms`,
@@ -228,19 +445,19 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
               {/* Post Header */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-4">
-                  <ProfileAvatar
-                    user={post.currUser || currentUser}
-                    size="md"
-                    showName={false}
+                  {/* Use centralized ProfileAvatar component */}
+                  <UserAvatar
+                    post={post}
+                    size="lg"
+                    onClick={() => handleProfileClick(post)}
                   />
                   <div>
-                    <ProfileLink user={post.currUser || currentUser}>
-                      <h3 className="font-semibold text-gray-900 hover:text-blue-600 transition-colors">
-                        {post.currUser?.name ||
-                          currentUser?.name ||
-                          "Anonymous"}
-                      </h3>
-                    </ProfileLink>
+                    <button
+                      onClick={() => handleProfileClick(post)}
+                      className="font-semibold text-gray-900 hover:text-blue-600 transition-colors"
+                    >
+                      {getUserDisplayName(post)}
+                    </button>
                     <p className="text-sm text-gray-500">
                       {post.timeStamp
                         ? new Date(
@@ -429,7 +646,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                   </button>
                   <div className="flex gap-4">
                     <span>{post.comments || 0} comments</span>
-                    <span>{post.views || 0} views</span>
                   </div>
                 </div>
               </div>

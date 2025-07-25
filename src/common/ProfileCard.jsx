@@ -1,4 +1,4 @@
-// Updated src/common/ProfileCard.jsx with image upload functionality
+// Updated src/common/ProfileCard.jsx with separate edit states and preview functionality
 
 import React, { useState } from "react";
 import {
@@ -28,7 +28,16 @@ export default function ProfileCard({
   targetUID,
 }) {
   const navigate = useNavigate();
-  const [isEditingImages, setIsEditingImages] = useState(false);
+
+  // Separate states for editing profile and cover
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isEditingCover, setIsEditingCover] = useState(false);
+
+  // Preview states
+  const [profilePreview, setProfilePreview] = useState(null);
+  const [coverPreview, setCoverPreview] = useState(null);
+
+  // Loading states
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [updatingCover, setUpdatingCover] = useState(false);
 
@@ -86,7 +95,12 @@ export default function ProfileCard({
     }
   };
 
-  // Handle profile picture upload
+  // Handle profile picture preview
+  const handleProfileImagePreview = (imageData) => {
+    setProfilePreview(imageData);
+  };
+
+  // Handle profile picture upload (final)
   const handleProfileImageUpload = async (imageData) => {
     setUpdatingProfile(true);
     try {
@@ -98,7 +112,8 @@ export default function ProfileCard({
 
       if (result.success) {
         console.log("Profile picture updated successfully");
-        // The UI will update automatically through real-time listeners
+        setProfilePreview(null);
+        setIsEditingProfile(false);
       } else {
         alert("Failed to update profile picture: " + result.error);
       }
@@ -122,6 +137,8 @@ export default function ProfileCard({
 
       if (result.success) {
         console.log("Profile picture removed successfully");
+        setProfilePreview(null);
+        setIsEditingProfile(false);
       } else {
         alert("Failed to remove profile picture: " + result.error);
       }
@@ -133,8 +150,15 @@ export default function ProfileCard({
     }
   };
 
-  // Handle cover photo upload
+  // Handle cover photo preview
+  const handleCoverImagePreview = (imageData) => {
+    console.log("Cover image preview received:", imageData); // Debug log
+    setCoverPreview(imageData);
+  };
+
+  // Handle cover photo upload (final)
   const handleCoverImageUpload = async (imageData) => {
+    console.log("Starting cover photo upload..."); // Debug log
     setUpdatingCover(true);
     try {
       const result = await editUser({
@@ -145,6 +169,8 @@ export default function ProfileCard({
 
       if (result.success) {
         console.log("Cover photo updated successfully");
+        setCoverPreview(null);
+        setIsEditingCover(false);
       } else {
         alert("Failed to update cover photo: " + result.error);
       }
@@ -158,6 +184,7 @@ export default function ProfileCard({
 
   // Handle cover photo removal
   const handleCoverImageRemove = async () => {
+    console.log("Removing cover photo..."); // Debug log
     setUpdatingCover(true);
     try {
       const result = await editUser({
@@ -168,6 +195,8 @@ export default function ProfileCard({
 
       if (result.success) {
         console.log("Cover photo removed successfully");
+        setCoverPreview(null);
+        setIsEditingCover(false);
       } else {
         alert("Failed to remove cover photo: " + result.error);
       }
@@ -179,15 +208,50 @@ export default function ProfileCard({
     }
   };
 
+  // Cancel editing functions
+  const cancelProfileEdit = () => {
+    console.log("Canceling profile edit..."); // Debug log
+    setIsEditingProfile(false);
+    setProfilePreview(null);
+  };
+
+  const cancelCoverEdit = () => {
+    console.log("Canceling cover edit..."); // Debug log
+    setIsEditingCover(false);
+    setCoverPreview(null);
+  };
+
+  // Confirm upload functions
+  const confirmProfileUpload = () => {
+    console.log("Confirming profile upload..."); // Debug log
+    if (profilePreview) {
+      handleProfileImageUpload(profilePreview);
+    }
+  };
+
+  const confirmCoverUpload = () => {
+    console.log("Confirming cover upload..."); // Debug log
+    if (coverPreview) {
+      handleCoverImageUpload(coverPreview);
+    }
+  };
+
   return (
     <div className="w-full">
       {/* Main Profile Card */}
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
         {/* Cover Image Section */}
         <div className="relative">
-          {/* Always Display Cover Photo - Don't change it unless specifically editing cover */}
+          {/* Cover Photo Display */}
           <div className="h-32 sm:h-40 md:h-48 lg:h-56 relative">
-            {currentUser?.coverPhotoURL ? (
+            {/* Show preview if available, otherwise show current image */}
+            {coverPreview ? (
+              <img
+                src={coverPreview.url}
+                alt="Cover Preview"
+                className="w-full h-full object-cover"
+              />
+            ) : currentUser?.coverPhotoURL ? (
               <img
                 src={currentUser.coverPhotoURL}
                 alt="Cover"
@@ -198,31 +262,70 @@ export default function ProfileCard({
             )}
 
             {/* Cover Photo Edit Button - Only for own profile */}
-            {isOwnProfile && (
+            {isOwnProfile && !isEditingCover && (
               <button
-                onClick={() => setIsEditingImages(!isEditingImages)}
-                className="absolute top-4 right-4 w-10 h-10 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full flex items-center justify-center transition-all duration-200"
-                title={isEditingImages ? "Cancel editing" : "Edit photos"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Cover edit button clicked"); // Debug log
+                  setIsEditingCover(true);
+                }}
+                className="absolute top-4 right-4 w-10 h-10 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full flex items-center justify-center transition-all duration-200 z-10"
+                title="Edit cover photo"
+                style={{ zIndex: 10 }}
               >
                 <Camera className="h-5 w-5" />
               </button>
             )}
 
             {/* Cover Photo Upload Overlay - Only show when specifically editing cover */}
-            {isOwnProfile && isEditingImages && (
-              <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
-                <ProfileImageUpload
-                  currentImage={currentUser?.coverPhotoURL}
-                  onImageUpload={handleCoverImageUpload}
-                  onImageRemove={handleCoverImageRemove}
-                  type="cover"
-                  className="w-full h-full"
-                />
+            {isOwnProfile && isEditingCover && (
+              <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center z-20">
+                <div className="w-full h-full flex items-center justify-center">
+                  <ProfileImageUpload
+                    currentImage={currentUser?.coverPhotoURL}
+                    onImageUpload={handleCoverImagePreview}
+                    onImageRemove={handleCoverImageRemove}
+                    type="cover"
+                    className="w-full h-full"
+                  />
+                </div>
+
+                {/* Cover Edit Action Buttons */}
+                <div className="absolute bottom-4 right-4 flex space-x-2 z-30">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log("Cancel cover edit clicked"); // Debug log
+                      cancelCoverEdit();
+                    }}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  {coverPreview && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log("Confirm cover upload clicked"); // Debug log
+                        confirmCoverUpload();
+                      }}
+                      disabled={updatingCover}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                      {updatingCover ? "Saving..." : "Save"}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Optional: Add pattern overlay */}
-            <div className="absolute inset-0 bg-black/10"></div>
+            {/* Optional: Add pattern overlay - but don't interfere with button clicks */}
+            {!isEditingCover && (
+              <div className="absolute inset-0 bg-black/10 pointer-events-none"></div>
+            )}
           </div>
         </div>
 
@@ -232,10 +335,17 @@ export default function ProfileCard({
           <div className="flex flex-col items-center sm:items-start -mt-12 sm:-mt-16 md:-mt-20">
             {/* Avatar */}
             <div className="relative mb-4">
-              {/* Always Display Profile Picture */}
+              {/* Profile Picture Display */}
               <div className="relative">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 bg-white rounded-full border-4 border-white shadow-xl flex items-center justify-center relative overflow-hidden">
-                  {currentUser?.photoURL ? (
+                  {/* Show preview if available, otherwise show current image */}
+                  {profilePreview ? (
+                    <img
+                      src={profilePreview.url}
+                      alt="Profile Preview"
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : currentUser?.photoURL ? (
                     <img
                       src={currentUser.photoURL}
                       alt={currentUser.name}
@@ -248,11 +358,11 @@ export default function ProfileCard({
                   )}
 
                   {/* Profile Picture Upload Overlay - Only show when editing */}
-                  {isOwnProfile && isEditingImages && (
+                  {isOwnProfile && isEditingProfile && (
                     <div className="absolute inset-0 bg-black bg-opacity-60 rounded-full flex items-center justify-center">
                       <ProfileImageUpload
                         currentImage={currentUser?.photoURL}
-                        onImageUpload={handleProfileImageUpload}
+                        onImageUpload={handleProfileImagePreview}
                         onImageRemove={handleProfileImageRemove}
                         type="profile"
                         className="w-full h-full"
@@ -262,18 +372,35 @@ export default function ProfileCard({
                 </div>
 
                 {/* Profile Picture Edit Button - Only for own profile */}
-                {isOwnProfile && (
+                {isOwnProfile && !isEditingProfile && (
                   <button
-                    onClick={() => setIsEditingImages(!isEditingImages)}
+                    onClick={() => setIsEditingProfile(true)}
                     className="absolute bottom-1 right-1 w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-lg"
-                    title={
-                      isEditingImages
-                        ? "Cancel editing"
-                        : "Edit profile picture"
-                    }
+                    title="Edit profile picture"
                   >
                     <Camera className="h-4 w-4" />
                   </button>
+                )}
+
+                {/* Profile Edit Action Buttons */}
+                {isOwnProfile && isEditingProfile && (
+                  <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 flex space-x-2 bg-white rounded-lg shadow-lg p-2 border">
+                    <button
+                      onClick={cancelProfileEdit}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    {profilePreview && (
+                      <button
+                        onClick={confirmProfileUpload}
+                        disabled={updatingProfile}
+                        className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {updatingProfile ? "Saving..." : "Save"}
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Online Status Indicator */}
@@ -285,24 +412,6 @@ export default function ProfileCard({
             <div className="w-full flex justify-center sm:justify-end mb-4">
               {isOwnProfile ? (
                 <div className="flex space-x-2">
-                  {/* Edit Images Button */}
-                  <button
-                    onClick={() => setIsEditingImages(!isEditingImages)}
-                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 border ${
-                      isEditingImages
-                        ? "bg-blue-500 text-white border-blue-500 hover:bg-blue-600"
-                        : "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <Camera className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {isEditingImages ? "Done" : "Edit Photos"}
-                    </span>
-                    <span className="sm:hidden">
-                      {isEditingImages ? "Done" : "Photos"}
-                    </span>
-                  </button>
-
                   {/* Edit Profile Button */}
                   <button
                     onClick={onEdit}
@@ -515,70 +624,8 @@ export default function ProfileCard({
         </div>
       </div>
 
-      {/* Additional Cards - Optional Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-        {/* Recent Activity Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <FileText className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-900">
-                Recent Posts
-              </div>
-              <div className="text-xs text-gray-500">Last 30 days</div>
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-gray-900">
-              {currentUser?.recentPosts || 0}
-            </div>
-          </div>
-        </div>
-
-        {/* Engagement Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Users className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-900">
-                Engagement
-              </div>
-              <div className="text-xs text-gray-500">Total interactions</div>
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-gray-900">
-              {currentUser?.totalEngagement || 0}
-            </div>
-          </div>
-        </div>
-
-        {/* Network Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Globe className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-900">Network</div>
-              <div className="text-xs text-gray-500">Total connections</div>
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-gray-900">
-              {(currentUser?.followers?.length || 0) +
-                (currentUser?.following?.length || 0)}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Image Upload Instructions Modal - Only shown when editing */}
-      {isOwnProfile && isEditingImages && (
+      {/* Image Upload Instructions - Show when editing */}
+      {isOwnProfile && (isEditingProfile || isEditingCover) && (
         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h4 className="text-sm font-semibold text-blue-900 mb-2">
             📸 Photo Upload Tips
@@ -595,6 +642,7 @@ export default function ProfileCard({
             <li>• Maximum file size: 5MB per image</li>
             <li>• Supported formats: JPG, PNG, GIF, WEBP</li>
             <li>• Images are automatically optimized for web</li>
+            <li>• Click "Save" to confirm your selection</li>
           </ul>
         </div>
       )}

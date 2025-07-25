@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { auth } from "../firebaseConfig";
-import { getStatus, getUser, toggleLike } from "../api/FireStore";
+import { auth, db } from "../firebaseConfig"; // Add db import
+import {
+  getStatus,
+  getUser,
+  toggleLike,
+  getUserDataByUID,
+  toggleLikeWithNotification, // Replace toggleLike with this
+} from "../api/FireStore"; // Add getUserDataByUID import
+import { doc, onSnapshot } from "firebase/firestore"; // Add Firestore imports
 import {
   Heart,
   MessageCircle,
@@ -19,6 +26,7 @@ import CreatePost from "../pages/CreatePost";
 import LikesModal from "../components/LikesModal";
 import { useNavigate } from "react-router-dom";
 import CommentsModal from "../components/CommentsModal";
+
 const Homefeed = ({ currUser }) => {
   const [activeFilter, setActiveFilter] = useState("all");
   const [isOpen, setIsOpen] = useState(false);
@@ -36,6 +44,8 @@ const Homefeed = ({ currUser }) => {
     totalComments: 0,
   });
 
+  // NEW: Store user profiles for real-time updates
+  const [userProfiles, setUserProfiles] = useState({});
   const [likingStates, setLikingStates] = useState({}); // Track which posts are being liked
   const navigate = useNavigate();
 
@@ -48,6 +58,117 @@ const Homefeed = ({ currUser }) => {
   useMemo(() => {
     getStatus(setPosts);
   }, []);
+
+  // NEW: Load user profiles for all post authors when posts change
+  useEffect(() => {
+    if (!posts || posts.length === 0) return;
+
+    const loadUserProfiles = async () => {
+      console.log("Loading user profiles for posts...");
+      const profilesMap = { ...userProfiles };
+
+      // Get all unique user IDs from posts
+      const userIds = posts
+        .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+        .filter((id) => id && !profilesMap[id]); // Only load profiles we don't have
+
+      const uniqueUserIds = [...new Set(userIds)];
+
+      if (uniqueUserIds.length === 0) {
+        console.log("No new user profiles to load");
+        return;
+      }
+
+      console.log("Loading profiles for users:", uniqueUserIds);
+
+      // Load profile data for each user
+      const profilePromises = uniqueUserIds.map(async (userId) => {
+        try {
+          const profileData = await getUserDataByUID(userId);
+          if (profileData) {
+            profilesMap[userId] = profileData;
+          }
+        } catch (error) {
+          console.error(`Error loading profile for ${userId}:`, error);
+        }
+      });
+
+      await Promise.all(profilePromises);
+      console.log("Loaded user profiles:", profilesMap);
+      setUserProfiles(profilesMap);
+    };
+
+    loadUserProfiles();
+  }, [posts]); // Dependency on posts to reload profiles when posts change
+
+  // NEW: Set up real-time listeners for user profiles that appear in posts
+  useEffect(() => {
+    if (!posts || posts.length === 0) return;
+
+    const userIds = posts
+      .map((post) => post.currUser?.uid || post.currUser?.id || post.authorId)
+      .filter((id) => id);
+
+    const uniqueUserIds = [...new Set(userIds)];
+
+    if (uniqueUserIds.length === 0) return;
+
+    console.log("Setting up real-time profile listeners for:", uniqueUserIds);
+
+    const unsubscribes = [];
+
+    // Set up individual listeners for each user
+    uniqueUserIds.forEach((userId) => {
+      // Skip if we already have a listener for this user
+      if (!userId) return;
+
+      const userRef = doc(db, "users", userId);
+
+      const unsubscribe = onSnapshot(
+        userRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const userData = { id: docSnap.id, ...docSnap.data() };
+            console.log(`Profile updated for user ${userId}:`, userData);
+
+            setUserProfiles((prev) => ({
+              ...prev,
+              [userId]: userData,
+            }));
+          } else {
+            console.log(`User profile not found for: ${userId}`);
+            setUserProfiles((prev) => {
+              const updated = { ...prev };
+              delete updated[userId];
+              return updated;
+            });
+          }
+        },
+        (error) => {
+          console.error(
+            `Error in real-time profile listener for ${userId}:`,
+            error
+          );
+        }
+      );
+
+      unsubscribes.push(unsubscribe);
+    });
+
+    // Cleanup function
+    return () => {
+      console.log(
+        "Cleaning up profile listeners for",
+        uniqueUserIds.length,
+        "users"
+      );
+      unsubscribes.forEach((unsubscribe) => {
+        if (typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      });
+    };
+  }, [posts]); // Re-setup listeners when posts change
 
   const [trendingTopics] = useState([
     {
@@ -83,6 +204,162 @@ const Homefeed = ({ currUser }) => {
     { number: 24, label: "Discussions" },
   ]);
 
+  // ENHANCED: Generate consistent initials
+  const getProfileInitials = (name) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .filter((n) => n.length > 0)
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // NEW: Get current profile data for a user
+  const getCurrentUserProfile = (post) => {
+    const userId = post.currUser?.uid || post.currUser?.id || post.authorId;
+    return userProfiles[userId] || post.currUser || {};
+  };
+
+  // ENHANCED: Get profile image URL with real-time data
+  const getProfileImageURL = (post) => {
+    const currentProfile = getCurrentUserProfile(post);
+    if (!currentProfile) return null;
+
+    // Priority: real-time data > original post data
+    return (
+      currentProfile.photoURL ||
+      currentProfile.profilePicture ||
+      currentProfile.avatar ||
+      currentProfile.image ||
+      post.currUser?.photoURL ||
+      post.currUser?.profilePicture ||
+      null
+    );
+  };
+
+  // ENHANCED: Get user display name with real-time data
+  const getUserDisplayName = (post) => {
+    const currentProfile = getCurrentUserProfile(post);
+    if (!currentProfile) return "Anonymous";
+
+    // Priority: real-time data > original post data
+    return (
+      currentProfile.name ||
+      currentProfile.displayName ||
+      currentProfile.fullName ||
+      post.currUser?.name ||
+      post.author ||
+      (currentProfile.email && currentProfile.email.split("@")[0]) ||
+      (post.currUser?.email && post.currUser.email.split("@")[0]) ||
+      "Anonymous"
+    );
+  };
+
+  // Generate consistent gradient colors
+  const getConsistentGradient = (identifier) => {
+    const gradients = [
+      "from-blue-500 to-purple-600",
+      "from-green-500 to-blue-600",
+      "from-purple-500 to-pink-600",
+      "from-yellow-500 to-red-600",
+      "from-indigo-500 to-purple-600",
+      "from-pink-500 to-rose-600",
+      "from-cyan-500 to-blue-600",
+      "from-emerald-500 to-teal-600",
+    ];
+
+    if (!identifier) return gradients[0];
+
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+      const char = identifier.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+  };
+
+  // NEW: Enhanced UserAvatar component for posts
+  const UserAvatar = ({ post, size = "lg", onClick }) => {
+    const currentProfile = getCurrentUserProfile(post);
+    const profileImageURL = getProfileImageURL(post);
+    const displayName = getUserDisplayName(post);
+    const userId =
+      post.currUser?.uid || post.currUser?.id || post.authorId || post.id;
+
+    // Size classes
+    const sizeClasses = {
+      sm: "w-8 h-8 text-sm",
+      md: "w-10 h-10 text-sm",
+      lg: "w-12 h-12 text-base",
+      xl: "w-16 h-16 text-lg",
+    };
+
+    const sizeClass = sizeClasses[size] || sizeClasses.lg;
+    const gradient = getConsistentGradient(userId || displayName);
+
+    return (
+      <div
+        onClick={onClick}
+        className={`${sizeClass} rounded-full overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 border-2 border-gray-100 hover:border-blue-200 flex-shrink-0 relative`}
+      >
+        {profileImageURL ? (
+          <>
+            <img
+              key={`profile-${userId}-${profileImageURL}-${
+                currentProfile.updatedAt || Date.now()
+              }`} // Force refresh with unique key
+              src={profileImageURL}
+              alt={displayName}
+              className="w-full h-full rounded-full object-cover"
+              onLoad={(e) => {
+                // Hide initials when image loads successfully
+                const initialsDiv = e.target.nextElementSibling;
+                if (
+                  initialsDiv &&
+                  initialsDiv.classList.contains("initials-fallback")
+                ) {
+                  initialsDiv.style.display = "none";
+                }
+                console.log("Profile image loaded for:", displayName);
+              }}
+              onError={(e) => {
+                // Show initials when image fails to load
+                console.log("Profile image failed to load for:", displayName);
+                e.target.style.display = "none";
+                const initialsDiv = e.target.nextElementSibling;
+                if (
+                  initialsDiv &&
+                  initialsDiv.classList.contains("initials-fallback")
+                ) {
+                  initialsDiv.style.display = "flex";
+                }
+              }}
+            />
+            {/* Initials fallback - always rendered but hidden by default when image exists */}
+            <div
+              className={`initials-fallback absolute inset-0 w-full h-full bg-gradient-to-br ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+              style={{ display: "none" }}
+            >
+              {getProfileInitials(displayName)}
+            </div>
+          </>
+        ) : (
+          // No image URL - show initials directly
+          <div
+            className={`w-full h-full bg-gradient-to-br ${gradient} rounded-full flex items-center justify-center text-white font-bold`}
+          >
+            {getProfileInitials(displayName)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const handleLike = async (postId) => {
     if (!auth.currentUser) {
       alert("Please log in to like posts");
@@ -95,11 +372,12 @@ const Homefeed = ({ currUser }) => {
     setLikingStates((prev) => ({ ...prev, [postId]: true }));
 
     try {
-      const result = await toggleLike(postId);
+      // Use the enhanced toggleLike function that includes notifications
+      const result = await toggleLikeWithNotification(postId);
 
       if (result.success) {
         // The posts will be updated automatically through the real-time listener
-        console.log("Like toggled successfully");
+        console.log("Like toggled successfully with notification");
       } else {
         console.error("Failed to toggle like:", result.error);
         alert("Failed to update like. Please try again.");
@@ -146,9 +424,14 @@ const Homefeed = ({ currUser }) => {
 
   const filteredPosts = posts.filter((post) => {
     if (activeFilter === "all") return true;
-    if (activeFilter === "papers") return post.type === "research-paper";
-    if (activeFilter === "discussions") return post.type === "discussion";
-    if (activeFilter === "projects") return post.type === "project";
+    if (activeFilter === "papers")
+      return (
+        post.type === "research-paper" || post.postType === "research-paper"
+      );
+    if (activeFilter === "discussions")
+      return post.type === "discussion" || post.postType === "discussion";
+    if (activeFilter === "projects")
+      return post.type === "project" || post.postType === "project";
     return true;
   });
 
@@ -179,36 +462,12 @@ const Homefeed = ({ currUser }) => {
   };
 
   const handleProfileClick = (post) => {
-    if (post.currUser?.id === auth.currentUser?.uid) {
+    const userId = post.currUser?.id || post.currUser?.uid;
+    if (userId === auth.currentUser?.uid) {
       navigate("/my-profile");
-    } else if (post.currUser?.id) {
-      navigate(`/profile/${post.currUser.id}`);
+    } else if (userId) {
+      navigate(`/profile/${userId}`);
     }
-  };
-
-  const getProfileAvatar = (post) => {
-    // First try to get profile picture from user data
-    const profilePicture = post.currUser?.photoURL;
-
-    if (profilePicture) {
-      return (
-        <img
-          src={profilePicture}
-          alt={post.currUser?.name || post.author}
-          className="w-full h-full rounded-full object-cover"
-        />
-      );
-    }
-  };
-
-  const getProfileInitials = (name) => {
-    if (!name) return "U";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
   };
 
   // Check if current user liked a post
@@ -281,263 +540,235 @@ const Homefeed = ({ currUser }) => {
 
               {/* Posts */}
               <div className="space-y-6">
-                {filteredPosts.map((post, index) => (
-                  <div
-                    key={post.id}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
-                    style={{
-                      animationDelay: `${index * 100}ms`,
-                    }}
-                  >
-                    {/* Post Header */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div
-                          onClick={() => handleProfileClick(post)}
-                          className="w-12 h-12 rounded-full overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 border-2 border-gray-100 hover:border-blue-200 flex-shrink-0"
-                        >
-                          {getProfileAvatar(post)}
+                {filteredPosts.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-4xl mb-4">📝</div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      No posts yet
+                    </h3>
+                    <p className="text-gray-500">
+                      Be the first to share something!
+                    </p>
+                  </div>
+                ) : (
+                  filteredPosts.map((post, index) => {
+                    const currentProfile = getCurrentUserProfile(post);
+                    const profileImageURL = getProfileImageURL(post);
+                    const displayName = getUserDisplayName(post);
+
+                    return (
+                      <div
+                        key={`post-${post.id}-${
+                          currentProfile.updatedAt || index
+                        }`} // Dynamic key based on profile updates
+                        className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
+                        style={{
+                          animationDelay: `${index * 100}ms`,
+                        }}
+                      >
+                        {/* Post Header */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center space-x-4">
+                            {/* ENHANCED: Real-time Profile Avatar */}
+                            <UserAvatar
+                              post={post}
+                              size="lg"
+                              onClick={() => handleProfileClick(post)}
+                            />
+
+                            <div>
+                              <button
+                                onClick={() => handleProfileClick(post)}
+                                className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900 transition-colors"
+                              >
+                                {displayName}
+                              </button>
+                              <p className="text-sm text-gray-500">
+                                {post.timeStamp
+                                  ? new Date(
+                                      post.timeStamp.seconds * 1000
+                                    ).toLocaleDateString()
+                                  : post.time || "Recently"}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
+                              post.postType || post.type
+                            )}`}
+                          >
+                            {getPostTypeLabel(post.postType || post.type)}
+                          </span>
                         </div>
 
-                        <div>
-                          <button
-                            onClick={() => handleProfileClick(post)}
-                            className="font-semibold cursor-pointer hover:text-blue-500 hover:underline text-gray-900 transition-colors"
-                          >
-                            {post.currUser?.name || post.author || "Anonymous"}
-                          </button>
-                          <p className="text-sm text-gray-500">
-                            {post.timeStamp
-                              ? new Date(
-                                  post.timeStamp.seconds * 1000
-                                ).toLocaleDateString()
-                              : post.time || "Recently"}
+                        {/* Post Content */}
+                        <div className="mb-4">
+                          <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
+                            {post.title || post.status}
+                          </h2>
+                          <p className="text-gray-600 leading-relaxed">
+                            {post.description || post.excerpt || post.status}
                           </p>
                         </div>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getPostTypeStyle(
-                          post.postType || post.type
-                        )}`}
-                      >
-                        {getPostTypeLabel(post.postType || post.type)}
-                      </span>
-                    </div>
 
-                    {/* Post Content */}
-                    <div className="mb-4">
-                      <h2 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-600 cursor-pointer transition-colors">
-                        {post.title || post.status}
-                      </h2>
-                      <p className="text-gray-600 leading-relaxed">
-                        {post.description || post.excerpt || post.status}
-                      </p>
-                    </div>
-
-                    {/* Tags */}
-                    {post.tags && post.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        {post.tags.map((tag, tagIndex) => (
-                          <span
-                            key={tagIndex}
-                            className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* File Preview */}
-                    {post.fileURL && (
-                      <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            {post.fileType === "pdf" ? "📄" : "📎"}
+                        {/* Tags */}
+                        {post.tags && post.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {post.tags.map((tag, tagIndex) => (
+                              <span
+                                key={tagIndex}
+                                className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-sm font-medium hover:bg-blue-100 cursor-pointer transition-colors"
+                              >
+                                {tag}
+                              </span>
+                            ))}
                           </div>
-                          <div className="flex-1">
-                            <p className="font-medium text-gray-900">
-                              {post.fileName || "Attached file"}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {post.fileType
-                                ? post.fileType.toUpperCase()
-                                : "File"}{" "}
-                              • Click to view
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => window.open(post.fileURL, "_blank")}
-                            className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
-                          >
-                            View
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                        )}
 
-                    {/* Post Actions */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
-                      <div className="flex space-x-4">
-                        <button
-                          onClick={() => handleLike(post.id)}
-                          disabled={likingStates[post.id]}
-                          className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                            isPostLikedByCurrentUser(post)
-                              ? "bg-red-500 text-white shadow-lg"
-                              : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
-                          } ${
-                            likingStates[post.id]
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                        >
-                          {likingStates[post.id] ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Heart
-                              className={`w-4 h-4 ${
+                        {/* File Preview */}
+                        {post.fileURL && (
+                          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                {post.fileType === "pdf" ? "📄" : "📎"}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">
+                                  {post.fileName || "Attached file"}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {post.fileType
+                                    ? post.fileType.toUpperCase()
+                                    : "File"}{" "}
+                                  • Click to view
+                                </p>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  window.open(post.fileURL, "_blank")
+                                }
+                                className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+                              >
+                                View
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Post Actions */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
+                          <div className="flex space-x-4">
+                            <button
+                              onClick={() => handleLike(post.id)}
+                              disabled={likingStates[post.id]}
+                              className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
                                 isPostLikedByCurrentUser(post)
-                                  ? "fill-current"
+                                  ? "bg-red-500 text-white shadow-lg"
+                                  : "bg-gray-50 text-gray-600 hover:bg-red-50 hover:text-red-600"
+                              } ${
+                                likingStates[post.id]
+                                  ? "opacity-50 cursor-not-allowed"
                                   : ""
                               }`}
-                            />
+                            >
+                              {likingStates[post.id] ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Heart
+                                  className={`w-4 h-4 ${
+                                    isPostLikedByCurrentUser(post)
+                                      ? "fill-current"
+                                      : ""
+                                  }`}
+                                />
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleLikesClick(post.id, post.likes || 0);
+                                }}
+                                className="hover:underline"
+                                disabled={likingStates[post.id]}
+                              >
+                                Like ({post.likes || 0})
+                              </button>
+                            </button>
+                            <button
+                              onClick={() => handleCommentsClick(post)}
+                              className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              <span>Comment ({post.comments || 0})</span>
+                            </button>
+                            <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
+                              <Share2 className="w-4 h-4" />
+                              <span>Share</span>
+                            </button>
+                          </div>
+                          {(post.postType === "research-paper" ||
+                            post.type === "research-paper") &&
+                            post.fileURL && (
+                              <button
+                                onClick={() =>
+                                  window.open(post.fileURL, "_blank")
+                                }
+                                className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>Download PDF</span>
+                              </button>
+                            )}
+                          {(post.postType === "project" ||
+                            post.type === "project") && (
+                            <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
+                              <Eye className="w-4 h-4" />
+                              <span>View Project</span>
+                            </button>
                           )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLikesClick(post.id, post.likes || 0);
-                            }}
-                            className="hover:underline"
-                            disabled={likingStates[post.id]}
-                          >
-                            Like ({post.likes || 0})
-                          </button>
-                        </button>
-                        <button
-                          onClick={() => handleCommentsClick(post)}
-                          className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all duration-300"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          <span>Comment ({post.comments || 0})</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
-                          <Share2 className="w-4 h-4" />
-                          <span>Share</span>
-                        </button>
-                      </div>
-                      {(post.postType === "research-paper" ||
-                        post.type === "research-paper") &&
-                        post.fileURL && (
-                          <button
-                            onClick={() => window.open(post.fileURL, "_blank")}
-                            className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
-                          >
-                            <Download className="w-4 h-4" />
-                            <span>Download PDF</span>
-                          </button>
-                        )}
-                      {(post.postType === "project" ||
-                        post.type === "project") && (
-                        <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
-                          <Eye className="w-4 h-4" />
-                          <span>View Project</span>
-                        </button>
-                      )}
-                    </div>
+                        </div>
 
-                    {/* Engagement Info */}
-                    {post.likedBy && post.likedBy.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-50">
-                        <button
-                          onClick={() =>
-                            handleLikesClick(post.id, post.likes || 0)
-                          }
-                          className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors"
-                        >
-                          {post.likedBy.length === 1
-                            ? `Liked by ${
-                                post.likedBy[0].name ||
-                                post.likedBy[0].email?.split("@")[0] ||
-                                "someone"
-                              }`
-                            : post.likedBy.length === 2
-                            ? `Liked by ${
-                                post.likedBy[0].name ||
-                                post.likedBy[0].email?.split("@")[0] ||
-                                "someone"
-                              } and ${
-                                post.likedBy[1].name ||
-                                post.likedBy[1].email?.split("@")[0] ||
-                                "1 other"
-                              }`
-                            : `Liked by ${
-                                post.likedBy[0].name ||
-                                post.likedBy[0].email?.split("@")[0] ||
-                                "someone"
-                              } and ${post.likedBy.length - 1} others`}
-                        </button>
+                        {/* Engagement Info */}
+                        {post.likedBy && post.likedBy.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-50">
+                            <button
+                              onClick={() =>
+                                handleLikesClick(post.id, post.likes || 0)
+                              }
+                              className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors"
+                            >
+                              {post.likedBy.length === 1
+                                ? `Liked by ${
+                                    post.likedBy[0].name ||
+                                    post.likedBy[0].email?.split("@")[0] ||
+                                    "someone"
+                                  }`
+                                : post.likedBy.length === 2
+                                ? `Liked by ${
+                                    post.likedBy[0].name ||
+                                    post.likedBy[0].email?.split("@")[0] ||
+                                    "someone"
+                                  } and ${
+                                    post.likedBy[1].name ||
+                                    post.likedBy[1].email?.split("@")[0] ||
+                                    "1 other"
+                                  }`
+                                : `Liked by ${
+                                    post.likedBy[0].name ||
+                                    post.likedBy[0].email?.split("@")[0] ||
+                                    "someone"
+                                  } and ${post.likedBy.length - 1} others`}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
 
           {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="space-y-6">
-              {/* Trending Topics */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <TrendingUp className="w-5 h-5 mr-2 text-orange-500" />
-                  Trending Topics
-                </h3>
-                <div className="space-y-3">
-                  {trendingTopics.map((topic, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center space-x-3 p-3 rounded-xl hover:bg-gray-50 cursor-pointer transition-all duration-300"
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-full ${topic.color} flex items-center justify-center text-white text-sm`}
-                      >
-                        {topic.icon}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 text-sm">
-                          {topic.title}
-                        </p>
-                        <p className="text-xs text-gray-500">{topic.count}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* User Stats */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <FileText className="w-5 h-5 mr-2 text-green-500" />
-                  Your Stats
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {userStats.map((stat, index) => (
-                    <div
-                      key={index}
-                      className="text-center p-4 bg-gray-50 rounded-xl"
-                    >
-                      <div className="text-2xl font-bold text-blue-600">
-                        {stat.number}
-                      </div>
-                      <div className="text-sm text-gray-600">{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
