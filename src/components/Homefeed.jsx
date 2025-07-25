@@ -700,10 +700,6 @@ const Homefeed = ({ currUser }) => {
                               <MessageCircle className="w-4 h-4" />
                               <span>Comment ({post.comments || 0})</span>
                             </button>
-                            <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300">
-                              <Share2 className="w-4 h-4" />
-                              <span>Share</span>
-                            </button>
                           </div>
                           {(post.postType === "research-paper" ||
                             post.type === "research-paper") &&
