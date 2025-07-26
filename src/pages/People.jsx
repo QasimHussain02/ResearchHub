@@ -279,6 +279,16 @@ const People = () => {
     }
   };
 
+  // NEW: Handle profile click navigation (similar to Homefeed.jsx)
+  const handleProfileClick = (person) => {
+    const userId = person.id;
+    if (userId === auth.currentUser?.uid) {
+      navigate("/my-profile");
+    } else if (userId) {
+      navigate(`/profile/${userId}`);
+    }
+  };
+
   // Function to get follow button configuration
   const getFollowButtonConfig = (person) => {
     const isLoading = buttonLoading[person.id];
@@ -540,7 +550,10 @@ const People = () => {
                     {/* User Info Section */}
                     <div className="flex items-start space-x-3 mb-4">
                       {/* Avatar */}
-                      <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0">
+                      <div
+                        className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm flex-shrink-0 cursor-pointer"
+                        onClick={() => handleProfileClick(person)}
+                      >
                         {person.avatar ? (
                           <img
                             src={person.avatar}
@@ -554,12 +567,18 @@ const People = () => {
 
                       {/* User Details */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-gray-900 truncate">
+                        <button
+                          onClick={() => handleProfileClick(person)}
+                          className="text-base font-semibold text-gray-900 hover:text-blue-500 hover:underline cursor-pointer transition-colors text-left truncate block"
+                        >
                           {person.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-1">
+                        </button>
+                        <button
+                          onClick={() => handleProfileClick(person)}
+                          className="text-sm text-gray-500 hover:text-blue-500 hover:underline cursor-pointer transition-colors mb-1 block"
+                        >
                           @{person.username}
-                        </p>
+                        </button>
                         <p className="text-sm text-gray-600 mb-2 line-clamp-2">
                           {person.bio}
                         </p>
@@ -610,34 +629,8 @@ const People = () => {
                         </>
                       )}
 
-                      {activeTab === "followers" && (
-                        <>
-                          {person.isFollowing ? (
-                            <button
-                              onClick={() => handleUnfollow(person.id)}
-                              className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 text-sm"
-                            >
-                              <UserX className="h-4 w-4" />
-                              <span>Unfollow</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={followButtonConfig.onClick}
-                              disabled={followButtonConfig.disabled}
-                              className={`flex-1 flex items-center justify-center space-x-1 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${followButtonConfig.className}`}
-                            >
-                              {buttonLoading[person.id] ? (
-                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                              ) : (
-                                followButtonConfig.icon && (
-                                  <followButtonConfig.icon className="h-4 w-4" />
-                                )
-                              )}
-                              <span>{followButtonConfig.text}</span>
-                            </button>
-                          )}
-                        </>
-                      )}
+                      {/* REMOVED: Follow/Unfollow buttons for followers tab */}
+                      {/* Followers tab now only shows profile navigation via clickable names */}
 
                       {activeTab === "following" && (
                         <button
@@ -653,117 +646,196 @@ const People = () => {
 
                   {/* Desktop/Tablet Layout - Side by Side */}
                   <div className="hidden sm:flex items-start justify-between">
-                    <div className="flex items-start space-x-4">
-                      {/* Avatar */}
-                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
-                        {person.avatar ? (
-                          <img
-                            src={person.avatar}
-                            alt={person.name}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          getInitials(person.name)
-                        )}
-                      </div>
-
-                      {/* User Info */}
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {person.name}
-                        </h3>
-                        <p className="text-sm text-gray-500 mb-1">
-                          @{person.username}
-                        </p>
-                        <p className="text-sm text-gray-600 mb-2">
-                          {person.bio}
-                        </p>
-
-                        {/* Additional Info */}
-                        <div className="flex items-center text-xs text-gray-500 space-x-4">
-                          {activeTab === "requests" && (
-                            <>
-                              <span>
-                                {person.mutualFollowers} mutual followers
-                              </span>
-                              <span>•</span>
-                              <span>{person.timestamp}</span>
-                            </>
-                          )}
-                          {(activeTab === "followers" ||
-                            activeTab === "following") && (
-                            <span>Followed in {person.followedDate}</span>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                        {/* Avatar */}
+                        <div
+                          className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium cursor-pointer"
+                          onClick={() => handleProfileClick(person)}
+                        >
+                          {person.avatar ? (
+                            <img
+                              src={person.avatar}
+                              alt={person.name}
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            getInitials(person.name)
                           )}
                         </div>
+
+                        {/* User Info */}
+                        <div className="flex-1 min-w-0">
+                          <button
+                            onClick={() => handleProfileClick(person)}
+                            className="text-lg font-semibold text-gray-900 hover:text-blue-500 hover:underline cursor-pointer transition-colors text-left truncate block"
+                          >
+                            {person.name}
+                          </button>
+                          <button
+                            onClick={() => handleProfileClick(person)}
+                            className="text-sm text-gray-500 hover:text-blue-500 hover:underline cursor-pointer transition-colors mb-1 block"
+                          >
+                            @{person.username}
+                          </button>
+                          <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                            {person.bio}
+                          </p>
+
+                          {/* Additional Info */}
+                          <div className="flex items-center text-xs text-gray-500 space-x-4">
+                            {activeTab === "requests" && (
+                              <>
+                                <span>
+                                  {person.mutualFollowers} mutual followers
+                                </span>
+                                <span>•</span>
+                                <span>{person.timestamp}</span>
+                              </>
+                            )}
+                            {(activeTab === "followers" ||
+                              activeTab === "following") && (
+                              <span>Followed in {person.followedDate}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Side Info */}
+                      <div className="flex flex-col items-end space-y-2 ml-4 flex-shrink-0">
+                        {activeTab === "requests" && (
+                          <>
+                            <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium">
+                              Follow Request
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              {person.mutualFollowers > 0 && (
+                                <div className="flex items-center space-x-1">
+                                  <Users className="h-3 w-3" />
+                                  <span>{person.mutualFollowers} mutual</span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {activeTab === "following" && (
+                          <>
+                            <div className="bg-purple-50 text-purple-600 px-3 py-1 rounded-full text-xs font-medium">
+                              Following
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              <div>{person.followedDate}</div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Profile Link Indicator */}
                       </div>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex space-x-2 flex-shrink-0">
-                      {activeTab === "requests" && (
-                        <>
-                          <button
-                            onClick={() =>
-                              handleAcceptRequest(
-                                person.requestId,
-                                person.fromUID
-                              )
-                            }
-                            className="flex items-center space-x-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            <span>Accept</span>
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleRejectRequest(person.requestId)
-                            }
-                            className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
-                          >
-                            <XCircle className="h-4 w-4" />
-                            <span>Decline</span>
-                          </button>
-                        </>
-                      )}
-
-                      {activeTab === "followers" && (
-                        <>
-                          {person.isFollowing ? (
+                    <div className="flex items-center space-x-4">
+                      {/* Action Buttons */}
+                      <div className="flex space-x-2">
+                        {activeTab === "requests" && (
+                          <>
                             <button
-                              onClick={() => handleUnfollow(person.id)}
+                              onClick={() =>
+                                handleAcceptRequest(
+                                  person.requestId,
+                                  person.fromUID
+                                )
+                              }
+                              className="flex items-center space-x-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                              <span>Accept</span>
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleRejectRequest(person.requestId)
+                              }
                               className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
                             >
-                              <UserX className="h-4 w-4" />
-                              <span>Unfollow</span>
+                              <XCircle className="h-4 w-4" />
+                              <span>Decline</span>
                             </button>
-                          ) : (
-                            <button
-                              onClick={followButtonConfig.onClick}
-                              disabled={followButtonConfig.disabled}
-                              className={`flex items-center space-x-1 px-4 py-2 rounded-lg transition-colors duration-200 ${followButtonConfig.className}`}
-                            >
-                              {buttonLoading[person.id] ? (
-                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                              ) : (
-                                followButtonConfig.icon && (
-                                  <followButtonConfig.icon className="h-4 w-4" />
-                                )
-                              )}
-                              <span>{followButtonConfig.text}</span>
-                            </button>
-                          )}
-                        </>
-                      )}
+                          </>
+                        )}
 
-                      {activeTab === "following" && (
+                        {activeTab === "following" && (
+                          <button
+                            onClick={() => handleUnfollow(person.id)}
+                            className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
+                          >
+                            <UserX className="h-4 w-4" />
+                            <span>Unfollow</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Right Side Info - Moved to rightmost */}
+                      <div className="flex flex-col items-end space-y-2 flex-shrink-0">
+                        {activeTab === "requests" && (
+                          <>
+                            <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium">
+                              Follow Request
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              {person.mutualFollowers > 0 && (
+                                <div className="flex items-center space-x-1">
+                                  <Users className="h-3 w-3" />
+                                  <span>{person.mutualFollowers} mutual</span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {activeTab === "followers" && (
+                          <>
+                            <div className="bg-green-50 text-green-600 px-3 py-1 rounded-full text-xs font-medium">
+                              Follower
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              <div>{person.followedDate}</div>
+                            </div>
+                          </>
+                        )}
+
+                        {activeTab === "following" && (
+                          <>
+                            <div className="bg-purple-50 text-purple-600 px-3 py-1 rounded-full text-xs font-medium">
+                              Following
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              <div>{person.followedDate}</div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Profile Link Indicator */}
                         <button
-                          onClick={() => handleUnfollow(person.id)}
-                          className="flex items-center space-x-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200"
+                          onClick={() => handleProfileClick(person)}
+                          className="text-xs cursor-pointer text-blue-500 hover:text-blue-700 transition-colors flex items-center space-x-1"
                         >
-                          <UserX className="h-4 w-4" />
-                          <span>Unfollow</span>
+                          <span>View Profile</span>
+                          <svg
+                            className="h-3 w-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>
