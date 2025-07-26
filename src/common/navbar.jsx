@@ -25,6 +25,7 @@ import {
   getUnreadNotificationsCount,
   markNotificationsAsRead,
   deleteNotification,
+  // markAllNotificationsAsRead, // Add this new function import
 } from "../api/FireStore";
 import NotificationsPopup from "../components/NotificationsPopup";
 
@@ -120,10 +121,6 @@ const Navbar = () => {
       }
     };
   }, []);
-
-  // Track notifications in real-time
-  // SAFE version of the notifications effect in Navbar.jsx
-  // Replace the notifications useEffect in your Navbar.jsx with this safer version:
 
   // Track notifications in real-time - SAFE VERSION
   useEffect(() => {
@@ -336,8 +333,38 @@ const Navbar = () => {
     setIsMobileMenuOpen(false);
   };
 
-  // Notifications handlers
-  const handleNotificationsClick = () => {
+  // ENHANCED: Notifications handlers with auto-read functionality
+  const handleNotificationsClick = async () => {
+    console.log("🔔 Bell icon clicked - opening notifications");
+
+    // Mark all unread notifications as read when opening the popup
+    if (unreadNotificationsCount > 0) {
+      try {
+        console.log(
+          `📖 Marking ${unreadNotificationsCount} notifications as read`
+        );
+
+        // If markAllNotificationsAsRead function exists, use it
+        if (typeof markAllNotificationsAsRead === "function") {
+          await markNotificationsAsRead();
+        } else {
+          // Fallback: Mark each unread notification individually
+          const unreadNotifications = notifications.filter((n) => !n.read);
+          const markPromises = unreadNotifications.map((notification) =>
+            markNotificationsAsRead(notification.id)
+          );
+          await Promise.all(markPromises);
+        }
+
+        console.log("✅ All notifications marked as read");
+
+        // Immediately update the local state to hide the badge
+        setUnreadNotificationsCount(0);
+      } catch (error) {
+        console.error("❌ Error marking notifications as read:", error);
+      }
+    }
+
     setIsNotificationsOpen(!isNotificationsOpen);
     setIsMobileMenuOpen(false);
   };
