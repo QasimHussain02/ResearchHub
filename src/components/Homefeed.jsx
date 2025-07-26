@@ -626,16 +626,18 @@ const Homefeed = ({ currUser }) => {
 
                       {/* File Preview */}
                       {post.fileURL && (
-                        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                              {post.fileType === "pdf" ? "📄" : "📎"}
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <span className="text-lg sm:text-xl">
+                                {post.fileType === "pdf" ? "📄" : "📎"}
+                              </span>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 text-sm sm:text-base truncate">
                                 {post.fileName || "Attached file"}
                               </p>
-                              <p className="text-sm text-gray-500">
+                              <p className="text-xs sm:text-sm text-gray-500 truncate">
                                 {post.fileType
                                   ? post.fileType.toUpperCase()
                                   : "File"}{" "}
@@ -646,14 +648,13 @@ const Homefeed = ({ currUser }) => {
                               onClick={() =>
                                 window.open(post.fileURL, "_blank")
                               }
-                              className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+                              className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
                             >
                               View
                             </button>
                           </div>
                         </div>
                       )}
-
                       {/* Post Actions */}
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-gray-50 gap-4">
                         <div className="flex space-x-4">
