@@ -131,7 +131,7 @@ const SignupComp = () => {
               Already on Research Hub?{" "}
               <span
                 className="text-[#071B36] font-semibold cursor-pointer"
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/login")}
               >
                 Sign in
               </span>
