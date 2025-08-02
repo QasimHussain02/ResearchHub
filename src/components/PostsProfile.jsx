@@ -682,12 +682,28 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                 </div>
               )}
               {/* File Preview */}
+              {/* File Preview */}
               {post.fileURL && (
                 <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="flex items-center gap-2 sm:gap-3">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                       <span className="text-lg sm:text-xl">
-                        {post.fileType === "pdf" ? "📄" : "📎"}
+                        {post.fileType === "pdf"
+                          ? "📄"
+                          : post.fileType?.includes("image") ||
+                            [
+                              "jpg",
+                              "jpeg",
+                              "png",
+                              "gif",
+                              "bmp",
+                              "webp",
+                              "svg",
+                            ].includes(
+                              post.fileName?.split(".").pop()?.toLowerCase()
+                            )
+                          ? "🖼️"
+                          : "📎"}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -699,14 +715,51 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                         Click to view
                       </p>
                     </div>
-                    <div className="flex gap-2">
+
+                    {/* Check if it's an image */}
+                    {post.fileType?.includes("image") ||
+                    [
+                      "jpg",
+                      "jpeg",
+                      "png",
+                      "gif",
+                      "bmp",
+                      "webp",
+                      "svg",
+                    ].includes(
+                      post.fileName?.split(".").pop()?.toLowerCase()
+                    ) ? (
+                      // For images: only show preview button
                       <button
                         onClick={() => handleFilePreview(post)}
                         className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
                       >
                         Preview
                       </button>
-                    </div>
+                    ) : (
+                      // For non-images: show both preview and download buttons
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleFilePreview(post)}
+                          className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = post.fileURL;
+                            link.download = post.fileName || "download";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          className="px-2 sm:px-3 py-1 bg-green-600 text-white rounded-md text-xs sm:text-sm hover:bg-green-700 transition-colors flex-shrink-0"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -768,7 +821,30 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                 <div className="flex gap-2">
                   {(post.postType === "research-paper" ||
                     post.type === "research-paper") &&
-                    post.fileURL && (
+                    post.fileURL &&
+                    // Check if it's an image
+                    (post.fileType?.includes("image") ||
+                    [
+                      "jpg",
+                      "jpeg",
+                      "png",
+                      "gif",
+                      "bmp",
+                      "webp",
+                      "svg",
+                    ].includes(
+                      post.fileName?.split(".").pop()?.toLowerCase()
+                    ) ? (
+                      // For images: only show preview button
+                      <button
+                        onClick={() => handleFilePreview(post)}
+                        className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>Preview</span>
+                      </button>
+                    ) : (
+                      // For non-images: show both preview and download buttons
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleFilePreview(post)}
@@ -792,7 +868,7 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                           <span>Download</span>
                         </button>
                       </div>
-                    )}
+                    ))}
                   {(post.postType === "project" || post.type === "project") && (
                     <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
                       <Eye className="w-4 h-4" />

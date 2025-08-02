@@ -430,6 +430,17 @@ const Homefeed = ({ currUser }) => {
     const fileName = post.fileName || "";
     const fileExtension = fileName.split(".").pop()?.toLowerCase() || "";
 
+    // Check if it's an image (can be previewed directly)
+    if (
+      fileType.includes("image") ||
+      ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"].includes(
+        fileExtension
+      )
+    ) {
+      window.open(post.fileURL, "_blank");
+      return;
+    }
+
     // Check if it's a PDF (can be previewed directly)
     if (fileType === "pdf" || fileExtension === "pdf") {
       window.open(post.fileURL, "_blank");
@@ -625,7 +636,25 @@ const Homefeed = ({ currUser }) => {
                           <div className="flex items-center gap-2 sm:gap-3">
                             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                               <span className="text-lg sm:text-xl">
-                                {post.fileType === "pdf" ? "📄" : "📎"}
+                                {post.fileType === "pdf"
+                                  ? "📄"
+                                  : post.fileType?.includes("image") ||
+                                    [
+                                      "jpg",
+                                      "jpeg",
+                                      "png",
+                                      "gif",
+                                      "bmp",
+                                      "webp",
+                                      "svg",
+                                    ].includes(
+                                      post.fileName
+                                        ?.split(".")
+                                        .pop()
+                                        ?.toLowerCase()
+                                    )
+                                  ? "🖼️"
+                                  : "📎"}
                               </span>
                             </div>
                             <div className="flex-1 min-w-0">
@@ -639,22 +668,51 @@ const Homefeed = ({ currUser }) => {
                                 • Click to view
                               </p>
                             </div>
-                            <div className="flex gap-2">
+
+                            {/* Check if it's an image */}
+                            {post.fileType?.includes("image") ||
+                            [
+                              "jpg",
+                              "jpeg",
+                              "png",
+                              "gif",
+                              "bmp",
+                              "webp",
+                              "svg",
+                            ].includes(
+                              post.fileName?.split(".").pop()?.toLowerCase()
+                            ) ? (
+                              // For images: only show preview button
                               <button
                                 onClick={() => handleFilePreview(post)}
                                 className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
                               >
                                 Preview
                               </button>
-                              <button
-                                onClick={() =>
-                                  window.open(post.fileURL, "_blank")
-                                }
-                                className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
-                              >
-                                Download
-                              </button>
-                            </div>
+                            ) : (
+                              // For non-images: show both preview and download buttons
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleFilePreview(post)}
+                                  className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
+                                >
+                                  Preview
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const link = document.createElement("a");
+                                    link.href = post.fileURL;
+                                    link.download = post.fileName || "download";
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }}
+                                  className="px-2 sm:px-3 py-1 bg-green-600 text-white rounded-md text-xs sm:text-sm hover:bg-green-700 transition-colors flex-shrink-0"
+                                >
+                                  Download
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -706,7 +764,30 @@ const Homefeed = ({ currUser }) => {
                         </div>
                         {(post.postType === "research-paper" ||
                           post.type === "research-paper") &&
-                          post.fileURL && (
+                          post.fileURL &&
+                          // Check if it's an image
+                          (post.fileType?.includes("image") ||
+                          [
+                            "jpg",
+                            "jpeg",
+                            "png",
+                            "gif",
+                            "bmp",
+                            "webp",
+                            "svg",
+                          ].includes(
+                            post.fileName?.split(".").pop()?.toLowerCase()
+                          ) ? (
+                            // For images: only show preview button
+                            <button
+                              onClick={() => handleFilePreview(post)}
+                              className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>Preview</span>
+                            </button>
+                          ) : (
+                            // For non-images: show both preview and download buttons
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleFilePreview(post)}
@@ -730,7 +811,7 @@ const Homefeed = ({ currUser }) => {
                                 <span>Download</span>
                               </button>
                             </div>
-                          )}
+                          ))}
                         {(post.postType === "project" ||
                           post.type === "project") && (
                           <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
