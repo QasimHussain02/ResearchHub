@@ -28,7 +28,7 @@ import {
   getOnlineStatus,
   updateOnlineStatus,
   getOrCreateConversation,
-  getUserDataByUID, // Add this import
+  getUserDataByUID,
 } from "../api/FireStore";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
@@ -96,7 +96,6 @@ const Messages = () => {
     };
   }, [currentUser]);
 
-  // NEW: Load participant profile data when conversations change
   useEffect(() => {
     if (!conversations || conversations.length === 0) return;
 
@@ -360,13 +359,11 @@ const Messages = () => {
       .substring(0, 2);
   };
 
-  // NEW: Get profile picture for a user
   const getProfilePicture = (userId) => {
     const profile = participantProfiles[userId];
     return profile?.photoURL || null;
   };
 
-  // NEW: Enhanced avatar component
   const UserAvatar = ({
     userId,
     name,
@@ -411,11 +408,6 @@ const Messages = () => {
             {getInitials(name)}
           </div>
         </div>
-        {showOnline && isOnline(userId) && (
-          <div
-            className={`absolute -bottom-1 -right-1 ${onlineSize[size]} bg-green-500 border-2 border-white rounded-full`}
-          ></div>
-        )}
       </div>
     );
   };

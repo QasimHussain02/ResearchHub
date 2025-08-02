@@ -279,7 +279,6 @@ const People = () => {
     }
   };
 
-  // NEW: Handle profile click navigation (similar to Homefeed.jsx)
   const handleProfileClick = (person) => {
     const userId = person.id;
     if (userId === auth.currentUser?.uid) {

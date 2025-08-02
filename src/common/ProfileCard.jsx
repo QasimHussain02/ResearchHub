@@ -1,5 +1,3 @@
-// Updated src/common/ProfileCard.jsx with separate edit states and preview functionality
-
 import React, { useState } from "react";
 import {
   Edit,
@@ -244,7 +242,6 @@ export default function ProfileCard({
         <div className="relative">
           {/* Cover Photo Display */}
           <div className="h-32 sm:h-40 md:h-48 lg:h-56 relative">
-            {/* Show preview if available, otherwise show current image */}
             {coverPreview ? (
               <img
                 src={coverPreview.url}
@@ -278,7 +275,6 @@ export default function ProfileCard({
               </button>
             )}
 
-            {/* Cover Photo Upload Overlay - Only show when specifically editing cover */}
             {isOwnProfile && isEditingCover && (
               <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center z-20">
                 <div className="w-full h-full flex items-center justify-center">
@@ -338,7 +334,6 @@ export default function ProfileCard({
               {/* Profile Picture Display */}
               <div className="relative">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 bg-white rounded-full border-4 border-white shadow-xl flex items-center justify-center relative overflow-hidden">
-                  {/* Show preview if available, otherwise show current image */}
                   {profilePreview ? (
                     <img
                       src={profilePreview.url}
@@ -357,7 +352,6 @@ export default function ProfileCard({
                     </div>
                   )}
 
-                  {/* Profile Picture Upload Overlay - Only show when editing */}
                   {isOwnProfile && isEditingProfile && (
                     <div className="absolute inset-0 bg-black bg-opacity-60 rounded-full flex items-center justify-center">
                       <ProfileImageUpload

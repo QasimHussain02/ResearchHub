@@ -22,7 +22,6 @@ export const useUserInitialization = () => {
   }, []);
 };
 
-// Component to wrap your app and ensure user initialization
 export const UserInitializer = ({ children }) => {
   useUserInitialization();
   return children;

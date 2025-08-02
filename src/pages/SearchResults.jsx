@@ -49,10 +49,7 @@ const SearchResults = () => {
       performSearch(query, category);
     }
   }, [query, category]);
-  // FIND THE FIRST useEffect (around line 25)
-  // ADD THIS NEW useEffect RIGHT AFTER IT:
 
-  // NEW: Load user profiles for search results
   useEffect(() => {
     if (!searchResults.posts.length && !searchResults.users.length) return;
 
@@ -92,7 +89,6 @@ const SearchResults = () => {
     loadUserProfiles();
   }, [searchResults]);
 
-  // NEW: Set up real-time listeners for search user profiles
   useEffect(() => {
     if (!searchResults.posts.length && !searchResults.users.length) return;
 
@@ -192,8 +188,6 @@ const SearchResults = () => {
     }
   };
 
-  // FIND THE getInitials FUNCTION (around line 110)
-  // ADD THESE FUNCTIONS RIGHT BEFORE IT:
 
   const getConsistentGradient = (identifier) => {
     const gradients = [

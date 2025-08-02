@@ -3,7 +3,7 @@ import {
   getStatus,
   toggleLikeWithNotification,
   getUserDataByUID,
-  deletePost, // Add this import
+  deletePost,
 } from "../api/FireStore";
 
 import { auth, db } from "../firebaseConfig";
@@ -15,8 +15,8 @@ import {
   Download,
   Eye,
   Loader2,
-  MoreVertical, // Add this import
-  Trash2, // Add this import
+  MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import LikesModal from "./LikesModal";
@@ -41,7 +41,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
   const [likingStates, setLikingStates] = useState({});
   const [userProfiles, setUserProfiles] = useState({});
 
-  // NEW: Add these states for delete functionality
   const [deletingStates, setDeletingStates] = useState({});
   const [showDeleteModal, setShowDeleteModal] = useState({
     isOpen: false,
@@ -56,6 +55,37 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     setLoading(true);
     getStatus(setPosts);
   }, []);
+  const handleFilePreview = (post) => {
+    const fileType = post.fileType?.toLowerCase() || "";
+    const fileName = post.fileName || "";
+    const fileExtension = fileName.split(".").pop()?.toLowerCase() || "";
+
+    // Check if it's a PDF (can be previewed directly)
+    if (fileType === "pdf" || fileExtension === "pdf") {
+      window.open(post.fileURL, "_blank");
+      return;
+    }
+
+    // For DOCX and other Office documents, use Google Docs Viewer
+    if (
+      fileType === "docx" ||
+      fileExtension === "docx" ||
+      fileType.includes("word") ||
+      fileType.includes("document") ||
+      fileExtension === "doc" ||
+      fileExtension === "ppt" ||
+      fileExtension === "pptx"
+    ) {
+      const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(
+        post.fileURL
+      )}&embedded=true`;
+      window.open(viewerUrl, "_blank");
+      return;
+    }
+
+    // For other file types, try to open directly
+    window.open(post.fileURL, "_blank");
+  };
 
   useEffect(() => {
     if (posts.length > 0 && currentUser?.email) {
@@ -152,7 +182,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     };
   }, [userPosts]);
 
-  // NEW: Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
       setShowDropdown({});
@@ -311,7 +340,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
     }
   };
 
-  // NEW: Delete functions
   const canDeletePost = (post) => {
     if (!auth.currentUser) return false;
 
@@ -494,7 +522,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
         totalComments={commentsModal.totalComments}
       />
 
-      {/* NEW: Delete Confirmation Modal */}
       {showDeleteModal.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
@@ -602,7 +629,6 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                     {getPostTypeLabel(post.postType || post.type)}
                   </span>
 
-                  {/* NEW: Three-dot menu for post options */}
                   {canDeletePost(post) && (
                     <div className="relative">
                       <button
@@ -673,12 +699,14 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                         Click to view
                       </p>
                     </div>
-                    <button
-                      onClick={() => window.open(post.fileURL, "_blank")}
-                      className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
-                    >
-                      View
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleFilePreview(post)}
+                        className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
+                      >
+                        Preview
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -741,14 +769,30 @@ export default function PostsProfile({ currentUser, targetUID, isOwnProfile }) {
                   {(post.postType === "research-paper" ||
                     post.type === "research-paper") &&
                     post.fileURL && (
-                      <button
-                        onClick={() => window.open(post.fileURL, "_blank")}
-                        className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleFilePreview(post)}
+                          className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>Preview</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = post.fileURL;
+                            link.download = post.fileName || "download";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Download</span>
+                        </button>
+                      </div>
                     )}
-
                   {(post.postType === "project" || post.type === "project") && (
                     <button className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300">
                       <Eye className="w-4 h-4" />

@@ -7,16 +7,21 @@ import Profile from "../pages/Profile";
 import People from "../pages/People";
 import Messages from "../pages/Messages";
 import SearchResults from "../pages/SearchResults";
-import PublicFeed from "../pages/PublicFeed"; // Import the new component
+import PublicFeed from "../pages/PublicFeed";
+import PublicRoute from "../components/PublicRoute";
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <PublicFeed />, // New public landing page
+    element: (
+      <PublicRoute>
+        <PublicFeed />
+      </PublicRoute>
+    ),
   },
   {
     path: "/login",
-    element: <Login />, // Moved from root to /login
+    element: <Login />,
   },
   {
     path: "/register",
@@ -24,7 +29,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/home",
-    element: <Home />, // Authenticated users home page
+    element: <Home />,
   },
   {
     path: "/create-post",

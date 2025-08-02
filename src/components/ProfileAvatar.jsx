@@ -1,6 +1,3 @@
-// Create this as src/components/ProfileAvatar.jsx
-// Centralized component to ensure consistent profile image display everywhere
-
 import React from "react";
 
 const ProfileAvatar = ({
@@ -11,7 +8,7 @@ const ProfileAvatar = ({
   showOnlineStatus = false,
   isOnline = false,
 }) => {
-  // Get user data - handle different data structures
+  // Get user data
   const userData = user || {};
   const name = userData.name || userData.displayName || "User";
   const photoURL =
@@ -60,7 +57,7 @@ const ProfileAvatar = ({
         />
       ) : null}
 
-      {/* Fallback initials - always rendered but hidden if image loads */}
+      {/* Fallback initials  */}
       <div
         className={`w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 text-white font-bold rounded-full flex items-center justify-center ${
           photoURL ? "hidden" : "flex"

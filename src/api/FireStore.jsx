@@ -43,7 +43,7 @@ export const getStatus = (setPosts) => {
   });
 };
 
-// Enhanced like/unlike functionality with user tracking
+// like/unlike feature
 export const toggleLike = async (postId) => {
   const currentUser = auth.currentUser;
   if (!currentUser) {
@@ -65,7 +65,6 @@ export const toggleLike = async (postId) => {
     const isLiked = likedBy.some((like) => like.uid === currentUser.uid);
 
     if (isLiked) {
-      // Unlike the post - remove the user's like object
       const updatedLikedBy = likedBy.filter(
         (like) => like.uid !== currentUser.uid
       );
@@ -74,10 +73,8 @@ export const toggleLike = async (postId) => {
         likes: Math.max(0, (postData.likes || 0) - 1),
       });
     } else {
-      // Like the post - get fresh user data and add like
       const userData = await getUserDataByUID(currentUser.uid);
 
-      // Create comprehensive like object with fallbacks
       const userName =
         userData?.name ||
         currentUser.displayName ||
@@ -89,13 +86,11 @@ export const toggleLike = async (postId) => {
         name: userName,
         email: currentUser.email || "No email",
         timestamp: new Date(),
-        // Add additional user info if available
         userPhoto: userData?.photoURL || currentUser.photoURL,
         userBio: userData?.bio || "",
       };
 
-      console.log("Creating like object:", likeObject); // Debug log
-
+      console.log("Creating like object:", likeObject);
       await updateDoc(postRef, {
         likedBy: arrayUnion(likeObject),
         likes: (postData.likes || 0) + 1,
@@ -276,7 +271,7 @@ export const editUser = async (payload) => {
   }
 };
 
-// Updated getUserDataByUID function with better error handling
+//  getUserDataByUID function with better error handling
 export const getUserDataByUID = async (uid) => {
   try {
     if (!uid) {
@@ -331,7 +326,6 @@ export const getUserDataByUIDRealtime = (uid, setUserData) => {
   return unsubscribe; // Return the unsubscribe function
 };
 
-// Alternative function using callback (for compatibility with existing code)
 export const getUserDataByUIDWithCallback = async (uid, setUserData) => {
   try {
     const userData = await getUserDataByUID(uid);
@@ -348,7 +342,7 @@ export const getUserDataByUIDWithCallback = async (uid, setUserData) => {
   }
 };
 
-// Enhanced function to get user posts with real-time updates
+// user posts with real-time updates
 export const getUserPosts = (userEmail, setPosts) => {
   if (!userEmail) {
     console.error("No user email provided for getting user posts");
@@ -473,7 +467,7 @@ export const updateUserNameInPosts = async (newName, userEmail) => {
   }
 };
 
-// Add this function to your FireStore.jsx for debugging
+
 export const debugPostLikes = async (postId) => {
   try {
     const postRef = doc(docRef, postId);
@@ -529,7 +523,6 @@ export const debugCurrentUser = async () => {
   console.log("=== END DEBUG ===");
 };
 
-// Add these comment functions to your existing FireStore.jsx file
 
 // Function to add a comment to a post
 export const addComment = async (postId, commentText) => {
@@ -866,7 +859,6 @@ export const markNotificationAsRead = async (userUID, notificationId) => {
   }
 };
 
-// Add these reply functions to your FireStore.jsx file
 
 // Function to add a reply to a comment
 export const addReply = async (postId, commentId, replyText) => {
@@ -2664,10 +2656,9 @@ export const getSearchSuggestions = async (searchTerm) => {
   }
 };
 
-// Add these enhanced functions to your existing FireStore.jsx file
 
 /**
- * Real-time user profile listener - for getting live updates of profile changes
+ * Real-time user profile listener 
  */
 export const getUserProfileRealtime = (userId, setUserProfile) => {
   if (!userId) {

@@ -1,5 +1,3 @@
-// Create this as src/components/SearchWidget.jsx
-
 import React, { useState, useEffect, useRef } from "react";
 import { Search, TrendingUp, Hash, Users, FileText, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";

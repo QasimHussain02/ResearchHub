@@ -1,4 +1,3 @@
-// Create this as src/components/FileUpload.jsx
 import React, { useState, useRef } from "react";
 import {
   Upload,
@@ -31,11 +30,9 @@ const FileUpload = ({
   const [uploadProgress, setUploadProgress] = useState({});
   const fileInputRef = useRef(null);
 
-  // Handle file selection
   const handleFileSelect = async (files) => {
     const fileArray = Array.from(files);
 
-    // Check max files limit
     if (uploadedFiles.length + fileArray.length > maxFiles) {
       alert(`Maximum ${maxFiles} file(s) allowed`);
       return;

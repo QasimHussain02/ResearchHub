@@ -1,5 +1,3 @@
-// Updated src/components/ProfileImageUpload.jsx with preview support
-
 import React, { useState, useRef } from "react";
 import {
   Camera,
@@ -91,7 +89,7 @@ const ProfileImageUpload = ({
           originalName: file.name,
           size: result.size,
           uploadedAt: new Date(),
-          previewUrl: preview, // Include preview URL
+          previewUrl: preview,
         };
 
         // Notify parent component for preview

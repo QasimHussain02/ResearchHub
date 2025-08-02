@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { auth, db } from "../firebaseConfig"; // Add db import
+import { auth, db } from "../firebaseConfig"; 
 import {
   getStatus,
   getUser,
   toggleLike,
   getUserDataByUID,
-  toggleLikeWithNotification, // Replace toggleLike with this
-} from "../api/FireStore"; // Add getUserDataByUID import
-import { doc, onSnapshot } from "firebase/firestore"; // Add Firestore imports
+  toggleLikeWithNotification,
+} from "../api/FireStore"; 
+import { doc, onSnapshot } from "firebase/firestore"; 
 import {
+  Eye,
   Heart,
   MessageCircle,
   Share2,
   Download,
-  Eye,
   Plus,
   TrendingUp,
   Users,
@@ -44,9 +44,9 @@ const Homefeed = ({ currUser }) => {
     totalComments: 0,
   });
 
-  // NEW: Store user profiles for real-time updates
+  
   const [userProfiles, setUserProfiles] = useState({});
-  const [likingStates, setLikingStates] = useState({}); // Track which posts are being liked
+  const [likingStates, setLikingStates] = useState({}); 
   const navigate = useNavigate();
 
   // Set up real-time listener for current user data
@@ -59,7 +59,6 @@ const Homefeed = ({ currUser }) => {
     getStatus(setPosts);
   }, []);
 
-  // NEW: Load user profiles for all post authors when posts change
   useEffect(() => {
     if (!posts || posts.length === 0) return;
 
@@ -81,7 +80,7 @@ const Homefeed = ({ currUser }) => {
 
       console.log("Loading profiles for users:", uniqueUserIds);
 
-      // Load profile data for each user
+    
       const profilePromises = uniqueUserIds.map(async (userId) => {
         try {
           const profileData = await getUserDataByUID(userId);
@@ -99,9 +98,8 @@ const Homefeed = ({ currUser }) => {
     };
 
     loadUserProfiles();
-  }, [posts]); // Dependency on posts to reload profiles when posts change
+  }, [posts]); 
 
-  // NEW: Set up real-time listeners for user profiles that appear in posts
   useEffect(() => {
     if (!posts || posts.length === 0) return;
 
@@ -216,13 +214,11 @@ const Homefeed = ({ currUser }) => {
       .slice(0, 2);
   };
 
-  // NEW: Get current profile data for a user
   const getCurrentUserProfile = (post) => {
     const userId = post.currUser?.uid || post.currUser?.id || post.authorId;
     return userProfiles[userId] || post.currUser || {};
   };
 
-  // ENHANCED: Get profile image URL with real-time data
   const getProfileImageURL = (post) => {
     const currentProfile = getCurrentUserProfile(post);
     if (!currentProfile) return null;
@@ -283,7 +279,6 @@ const Homefeed = ({ currUser }) => {
     return gradients[index];
   };
 
-  // NEW: Enhanced UserAvatar component for posts
   const UserAvatar = ({ post, size = "lg", onClick }) => {
     const currentProfile = getCurrentUserProfile(post);
     const profileImageURL = getProfileImageURL(post);
@@ -460,6 +455,37 @@ const Homefeed = ({ currUser }) => {
         return "Post";
     }
   };
+  function handleFilePreview(post) {
+    const fileType = post.fileType?.toLowerCase() || "";
+    const fileName = post.fileName || "";
+    const fileExtension = fileName.split(".").pop()?.toLowerCase() || "";
+
+    // Check if it's a PDF (can be previewed directly)
+    if (fileType === "pdf" || fileExtension === "pdf") {
+      window.open(post.fileURL, "_blank");
+      return;
+    }
+
+    // For DOCX and other Office documents, use Google Docs Viewer
+    if (
+      fileType === "docx" ||
+      fileExtension === "docx" ||
+      fileType.includes("word") ||
+      fileType.includes("document") ||
+      fileExtension === "doc" ||
+      fileExtension === "ppt" ||
+      fileExtension === "pptx"
+    ) {
+      const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(
+        post.fileURL
+      )}&embedded=true`;
+      window.open(viewerUrl, "_blank");
+      return;
+    }
+
+    // For other file types, try to open directly
+    window.open(post.fileURL, "_blank");
+  }
 
   const handleProfileClick = (post) => {
     const userId = post.currUser?.id || post.currUser?.uid;
@@ -644,14 +670,14 @@ const Homefeed = ({ currUser }) => {
                                 • Click to view
                               </p>
                             </div>
-                            <button
-                              onClick={() =>
-                                window.open(post.fileURL, "_blank")
-                              }
-                              className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
-                            >
-                              View
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleFilePreview(post)}
+                                className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
+                              >
+                                Preview
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -704,15 +730,29 @@ const Homefeed = ({ currUser }) => {
                         {(post.postType === "research-paper" ||
                           post.type === "research-paper") &&
                           post.fileURL && (
-                            <button
-                              onClick={() =>
-                                window.open(post.fileURL, "_blank")
-                              }
-                              className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
-                            >
-                              <Download className="w-4 h-4" />
-                              <span>Download PDF</span>
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleFilePreview(post)}
+                                className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-all duration-300"
+                              >
+                                <Eye className="w-4 h-4" />
+                                <span>Preview</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const link = document.createElement("a");
+                                  link.href = post.fileURL;
+                                  link.download = post.fileName || "download";
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                }}
+                                className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition-all duration-300"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>Download</span>
+                              </button>
+                            </div>
                           )}
                         {(post.postType === "project" ||
                           post.type === "project") && (

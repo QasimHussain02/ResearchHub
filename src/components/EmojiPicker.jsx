@@ -1,5 +1,3 @@
-// Create this as src/components/EmojiPicker.jsx
-
 import React, { useState, useRef, useEffect } from "react";
 import { Search, Clock } from "lucide-react";
 

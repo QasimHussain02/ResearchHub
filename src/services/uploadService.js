@@ -1,5 +1,3 @@
-// Updated src/services/uploadService.js with environment variables
-
 // 🚨 Get credentials from environment variables (more secure)
 const CLOUD_NAME = "du9atobjy";
 const UPLOAD_PRESET = "ResearchHub";
@@ -106,7 +104,7 @@ export const uploadFile = async (file, folder = "research-hub") => {
   }
 };
 
-// Rest of your functions remain the same...
+// Rest of functions remain the same...
 export const validateFile = (file) => {
   const errors = [];
 

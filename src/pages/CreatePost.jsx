@@ -158,31 +158,27 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
         email: userEmail,
         uid: user.uid,
         id: user.uid,
-        ...userData, // Include any additional user data
-        ...currUser, // Include any passed user data
+        ...userData,
+        ...currUser,
       };
-
-      // In the sendStatus function within CreatePost.jsx, update the postData object:
-
-      // In the sendStatus function within CreatePost.jsx, update the postData object:
 
       const postData = {
         postId: Date.now() + Math.random().toString(36).substring(2, 15),
         title: title.trim(),
         description: content.trim(),
         excerpt: content.trim(),
-        status: content.trim(), // For backward compatibility
+        status: content.trim(),
         authorBg: "bg-gradient-to-br from-green-500 to-teal-600",
         tags: selectedTags,
         postType: postType,
-        type: postType, // For backward compatibility
+        type: postType, //
         visibility,
         author: userName,
         authorInitials: initials,
         authorEmail: userEmail,
         authorId: user.uid,
         likes: 0,
-        likedBy: [], // Initialize empty array for tracking who liked the post
+        likedBy: [],
         comments: 0,
         views: 0,
         liked: false,
@@ -322,7 +318,8 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
             {/* Content */}
             <div className="mb-6">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Content <span className="text-red-500">*</span>
+                {postType === "research" ? "Abstract" : "Content"}
+                <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={content}
@@ -368,50 +365,6 @@ const CreatePost = ({ isOpen, setIsOpen, currUser }) => {
 
           {/* Right side - Settings */}
           <div className="w-full lg:w-80 bg-gray-50 p-4 sm:p-6 border-t lg:border-t-0 lg:border-l border-gray-200 overflow-y-auto">
-            {/* Visibility */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                Visibility
-              </label>
-              <div className="space-y-2">
-                {[
-                  {
-                    val: "public",
-                    label: "Public",
-                    Icon: Globe,
-                    color: "text-green-600",
-                  },
-                  {
-                    val: "private",
-                    label: "Private",
-                    Icon: Lock,
-                    color: "text-orange-600",
-                  },
-                ].map(({ val, Icon, label, color }) => (
-                  <button
-                    key={val}
-                    onClick={() => setVisibility(val)}
-                    disabled={isSubmitting}
-                    className={`w-full flex items-center p-3 rounded-lg border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                      visibility === val
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <Icon className={`w-5 h-5 mr-3 ${color}`} />
-                    <div className="text-left">
-                      <div className="font-medium text-gray-700">{label}</div>
-                      <div className="text-sm text-gray-500">
-                        {val === "public"
-                          ? "Anyone can see this post"
-                          : "Only you can see this post"}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Tags */}
             <div className="mb-6">
               <label className="block text-sm font-semibold text-gray-700 mb-3">
