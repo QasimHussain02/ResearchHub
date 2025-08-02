@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { auth, db } from "../firebaseConfig"; 
+import { auth, db } from "../firebaseConfig";
 import {
   getStatus,
   getUser,
   toggleLike,
   getUserDataByUID,
   toggleLikeWithNotification,
-} from "../api/FireStore"; 
-import { doc, onSnapshot } from "firebase/firestore"; 
+} from "../api/FireStore";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
   Eye,
   Heart,
@@ -44,9 +44,8 @@ const Homefeed = ({ currUser }) => {
     totalComments: 0,
   });
 
-  
   const [userProfiles, setUserProfiles] = useState({});
-  const [likingStates, setLikingStates] = useState({}); 
+  const [likingStates, setLikingStates] = useState({});
   const navigate = useNavigate();
 
   // Set up real-time listener for current user data
@@ -80,7 +79,6 @@ const Homefeed = ({ currUser }) => {
 
       console.log("Loading profiles for users:", uniqueUserIds);
 
-    
       const profilePromises = uniqueUserIds.map(async (userId) => {
         try {
           const profileData = await getUserDataByUID(userId);
@@ -98,7 +96,7 @@ const Homefeed = ({ currUser }) => {
     };
 
     loadUserProfiles();
-  }, [posts]); 
+  }, [posts]);
 
   useEffect(() => {
     if (!posts || posts.length === 0) return;
@@ -167,33 +165,6 @@ const Homefeed = ({ currUser }) => {
       });
     };
   }, [posts]); // Re-setup listeners when posts change
-
-  const [trendingTopics] = useState([
-    {
-      icon: "🤖",
-      title: "Artificial Intelligence",
-      count: "156 discussions",
-      color: "bg-blue-500",
-    },
-    {
-      icon: "🧠",
-      title: "Machine Learning",
-      count: "98 papers",
-      color: "bg-purple-500",
-    },
-    {
-      icon: "🔗",
-      title: "Blockchain",
-      count: "67 projects",
-      color: "bg-green-500",
-    },
-    {
-      icon: "🔒",
-      title: "Cybersecurity",
-      count: "43 discussions",
-      color: "bg-red-500",
-    },
-  ]);
 
   const [userStats] = useState([
     { number: 3, label: "Papers" },
@@ -425,8 +396,7 @@ const Homefeed = ({ currUser }) => {
       );
     if (activeFilter === "discussions")
       return post.type === "discussion" || post.postType === "discussion";
-    if (activeFilter === "projects")
-      return post.type === "project" || post.postType === "project";
+
     return true;
   });
 
@@ -546,7 +516,6 @@ const Homefeed = ({ currUser }) => {
                   { key: "all", label: "All" },
                   { key: "papers", label: "Papers" },
                   { key: "discussions", label: "Discussions" },
-                  { key: "projects", label: "Projects" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -676,6 +645,14 @@ const Homefeed = ({ currUser }) => {
                                 className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
                               >
                                 Preview
+                              </button>
+                              <button
+                                onClick={() =>
+                                  window.open(post.fileURL, "_blank")
+                                }
+                                className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded-md text-xs sm:text-sm hover:bg-blue-700 transition-colors flex-shrink-0"
+                              >
+                                Download
                               </button>
                             </div>
                           </div>
