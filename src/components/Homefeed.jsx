@@ -392,7 +392,10 @@ const Homefeed = ({ currUser }) => {
     if (activeFilter === "all") return true;
     if (activeFilter === "papers")
       return (
-        post.type === "research-paper" || post.postType === "research-paper"
+        post.type === "research-paper" ||
+        post.postType === "research-paper" ||
+        post.type === "research" ||
+        post.postType === "research"
       );
     if (activeFilter === "discussions")
       return post.type === "discussion" || post.postType === "discussion";
@@ -419,6 +422,8 @@ const Homefeed = ({ currUser }) => {
         return "Research Paper";
       case "discussion":
         return "Discussion";
+      case "research":
+        return "Research";
       case "project":
         return "Project";
       default:
