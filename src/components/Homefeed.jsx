@@ -342,7 +342,6 @@ const Homefeed = ({ currUser }) => {
       const result = await toggleLikeWithNotification(postId);
 
       if (result.success) {
-        // The posts will be updated automatically through the real-time listener
         console.log("Like toggled successfully with notification");
       } else {
         console.error("Failed to toggle like:", result.error);
@@ -374,7 +373,20 @@ const Homefeed = ({ currUser }) => {
       totalComments: post.comments || 0,
     });
   };
-
+  const handleShare = (post) => {
+    // Basic share functionality
+    if (navigator.share) {
+      navigator.share({
+        title: post.title,
+        text: post.excerpt,
+        url: window.location.href,
+      });
+    } else {
+      // Fallback - copy to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      alert("Link copied to clipboard!");
+    }
+  };
   const closeCommentsModal = () => {
     setCommentsModal({
       isOpen: false,
@@ -765,6 +777,13 @@ const Homefeed = ({ currUser }) => {
                           >
                             <MessageCircle className="w-4 h-4" />
                             <span>Comment ({post.comments || 0})</span>
+                          </button>
+                          <button
+                            onClick={() => handleShare(post)}
+                            className="flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-50 text-gray-600 hover:bg-green-50 hover:text-green-600 transition-all duration-300"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            <span>Share</span>
                           </button>
                         </div>
                         {(post.postType === "research-paper" ||

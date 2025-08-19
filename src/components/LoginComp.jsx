@@ -33,7 +33,6 @@ const LoginComp = () => {
       const userDocRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userDocRef);
       if (!userSnap.exists()) {
-        // Create the user in Firestore if not exists
         await setDoc(userDocRef, {
           name: user.displayName,
           email: user.email,
@@ -45,7 +44,6 @@ const LoginComp = () => {
       }
     } catch (error) {
       // console.log("User signed in with Google:", user);
-      // Do something with user info — e.g., redirect or save to DB
       console.error("Google sign-in error:", error);
       alert(error.message); // Optional user-friendly error
     }

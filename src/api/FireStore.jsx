@@ -124,7 +124,6 @@ export const getPostLikes = async (postId) => {
   }
 };
 
-// Enhanced postUserData function to ensure user document exists
 export const postUserData = async (userData) => {
   const uid = auth.currentUser?.uid;
 
@@ -467,7 +466,6 @@ export const updateUserNameInPosts = async (newName, userEmail) => {
   }
 };
 
-
 export const debugPostLikes = async (postId) => {
   try {
     const postRef = doc(docRef, postId);
@@ -522,7 +520,6 @@ export const debugCurrentUser = async () => {
   console.log("Firestore User Data:", userData);
   console.log("=== END DEBUG ===");
 };
-
 
 // Function to add a comment to a post
 export const addComment = async (postId, commentText) => {
@@ -858,7 +855,6 @@ export const markNotificationAsRead = async (userUID, notificationId) => {
     return { success: false, error: error.message };
   }
 };
-
 
 // Function to add a reply to a comment
 export const addReply = async (postId, commentId, replyText) => {
@@ -2656,9 +2652,8 @@ export const getSearchSuggestions = async (searchTerm) => {
   }
 };
 
-
 /**
- * Real-time user profile listener 
+ * Real-time user profile listener
  */
 export const getUserProfileRealtime = (userId, setUserProfile) => {
   if (!userId) {
